@@ -1,0 +1,28 @@
+services:
+  web:
+    build: .
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    command: python manage.py runserver 0.0.0.0:8000
+    depends_on:
+      - db
+    environment:
+      - DB_NAME=sigap_db
+      - DB_USER=sigap_user
+      - DB_PASSWORD=sigap_pass
+      - DB_HOST=db
+      - DB_PORT=5432
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: sigap_db
+      POSTGRES_USER: sigap_user
+      POSTGRES_PASSWORD: sigap_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
