@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   web:
     build: .
@@ -10,19 +12,22 @@ services:
       - db
     env_file:
       - .env
+    
     environment:
-      - DB_NAME=sigap_db
-      - DB_USER=sigap_user
-      - DB_PASSWORD=sigap_pass
-      - DB_HOST=db
-      - DB_PORT=5432
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
 
   db:
     image: postgres:16
+    # 💡 Aquí SI es obligatorio mapear, porque Postgres usa nombres 
+    # de variables específicos (POSTGRES_...) diferentes a los de tu .env
     environment:
-      POSTGRES_DB: sigap_db
-      POSTGRES_USER: sigap_user
-      POSTGRES_PASSWORD: sigap_pass
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
