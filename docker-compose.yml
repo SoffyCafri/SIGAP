@@ -8,6 +8,8 @@ services:
     command: python manage.py runserver 0.0.0.0:8000
     depends_on:
       - db
+    env_file:
+      - .env
     environment:
       - DB_NAME=sigap_db
       - DB_USER=sigap_user

@@ -12,3 +12,5 @@ staticfiles/
 
 # Docker volumes
 postgres_data/
+
+.env
