@@ -5,6 +5,7 @@ from django.shortcuts import redirect
 from django.utils.html import format_html
 from .models import Proyecto, Formato1, Participacion, Prorroga
 from evaluation.models import Evaluaciones
+from django.utils.safestring import mark_safe
 
 
 # --- Inlines (Formularios anidados dentro de ProyectoAdmin) ---
@@ -32,7 +33,7 @@ class ProyectoAdmin(admin.ModelAdmin):
     list_display = (
         'folio', 'titulo', 'asesor', 'evaluador', 'modalidad',
         'calendario_registro', 'dictamen',
-        'boton_enviar_correo', 'boton_enviar_correo_evaluador'
+        'boton_enviar_correo', 'boton_enviar_correo_evaluador',
     )
 
     list_filter = (
@@ -70,18 +71,16 @@ class ProyectoAdmin(admin.ModelAdmin):
         )
     boton_enviar_correo_evaluador.short_description = "Correo Evaluador"
 
-    # --------------------- URLs extras ---------------------
-    def get_urls(self):
-        from django.urls import path
-        urls = super().get_urls()
-        custom_urls = [
-            path(
-                'enviar-correo-evaluador/<str:folio>/',
-                self.admin_site.admin_view(self.enviar_correo_evaluador),
-                name='enviar_correo_evaluador',
-            ),
-        ]
-        return custom_urls + urls
+    def importar_forms(self, request):
+        from django.core.management import call_command
+
+        try:
+            call_command("importar_forms")
+            messages.success(request, "✔ Importación desde Google Forms ejecutada correctamente.")
+        except Exception as e:
+            messages.error(request, f"❌ Error durante la importación: {e}")
+
+        return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
     # --------------------- Lógica del correo ---------------------
     def enviar_correo_evaluador(self, request, folio):
@@ -123,10 +122,24 @@ class ProyectoAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
-            path('enviar-correo/<str:folio>/', self.admin_site.admin_view(self.enviar_correo), name='enviar_correo'),
-            path('enviar-correo-evaluador/<str:folio>/', self.admin_site.admin_view(self.enviar_correo_evaluador), name='enviar_correo_evaluador'),
+            path(
+                'enviar-correo/<str:folio>/',
+                self.admin_site.admin_view(self.enviar_correo),
+                name='enviar_correo'
+            ),
+            path(
+                'enviar-correo-evaluador/<str:folio>/',
+                self.admin_site.admin_view(self.enviar_correo_evaluador),
+                name='enviar_correo_evaluador'
+            ),
+            path(
+                'importar-forms/',
+                self.admin_site.admin_view(self.importar_forms),
+                name='importar_forms_admin'
+            ),
         ]
         return custom_urls + urls
+
 
     # --- Lógica del envío de correo ---
     def enviar_correo(self, request, folio):
@@ -158,7 +171,6 @@ class ProyectoAdmin(admin.ModelAdmin):
             f"Estimados participantes,\n\n"
             f"Este es un aviso relacionado con el proyecto '{proyecto.titulo}' "
             f"(folio: {proyecto.folio}).\n\n"
-            f"Por favor revisen su cuenta SIGAP para más información.\n\n"
             f"Atentamente,\nComité de Evaluación"
         )
 

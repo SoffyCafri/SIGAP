@@ -1,0 +1,18 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+
+{% block object-tools %}
+  <div class="object-tools">
+    <ul class="object-tools">
+      <li>
+        <a href="{% url 'admin:importar_forms_admin' %}"
+           class="addlink"
+           style="background:#fd7e14; border-color:#fd7e14;">
+          📥 Importar Google Forms
+        </a>
+      </li>
+
+      {{ block.super }}
+    </ul>
+  </div>
+{% endblock %}
