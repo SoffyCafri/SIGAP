@@ -3,17 +3,22 @@ from django.core.mail import send_mail
 from django.urls import path
 from django.shortcuts import redirect
 from django.utils.html import format_html
+from django.conf import settings # Importante para el remitente
 from .models import Proyecto, Formato1, Participacion, Prorroga
 from evaluation.models import Evaluaciones
-from django.utils.safestring import mark_safe
 
+# --- Inlines ---
 
-# --- Inlines (Formularios anidados dentro de ProyectoAdmin) ---
+class Formato1Inline(admin.StackedInline):
+    model = Formato1
+    can_delete = False
+    verbose_name = "Documentación (Formato 1)"
+    verbose_name_plural = "Documentación Inicial"
 
 class ParticipacionInline(admin.TabularInline):
     model = Participacion
     extra = 1
-    #autocomplete_fields = ['alumno']
+    autocomplete_fields = ['alumno']
 
 class ProrrogaInline(admin.TabularInline):
     model = Prorroga
@@ -46,12 +51,13 @@ class ProyectoAdmin(admin.ModelAdmin):
     )
 
     inlines = [
+        Formato1Inline,
         ParticipacionInline,
         ProrrogaInline,
         EvaluacionesInline
     ]
 
-    # --- Botón personalizado para asesor ---
+    # --- Botones personalizados ---
     def boton_enviar_correo(self, obj):
         return format_html(
             '<a class="button" href="enviar-correo/{}/" '
@@ -61,7 +67,6 @@ class ProyectoAdmin(admin.ModelAdmin):
         )
     boton_enviar_correo.short_description = "Acción"
 
-    # --- Botón personalizado para evaluador ---
     def boton_enviar_correo_evaluador(self, obj):
         return format_html(
             '<a class="button" href="enviar-correo-evaluador/{}/" '
@@ -71,101 +76,47 @@ class ProyectoAdmin(admin.ModelAdmin):
         )
     boton_enviar_correo_evaluador.short_description = "Correo Evaluador"
 
+    # --- URLs Personalizadas ---
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('enviar-correo/<str:folio>/', self.admin_site.admin_view(self.enviar_correo), name='enviar_correo'),
+            path('enviar-correo-evaluador/<str:folio>/', self.admin_site.admin_view(self.enviar_correo_evaluador), name='enviar_correo_evaluador'),
+            path('importar-forms/', self.admin_site.admin_view(self.importar_forms), name='importar_forms_admin'),
+        ]
+        return custom_urls + urls
+
+    # --- LÓGICA DE NEGOCIO ---
+
     def importar_forms(self, request):
         from django.core.management import call_command
-
         try:
             call_command("importar_forms")
             messages.success(request, "✔ Importación desde Google Forms ejecutada correctamente.")
         except Exception as e:
             messages.error(request, f"❌ Error durante la importación: {e}")
-
         return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
-    # --------------------- Lógica del correo ---------------------
-    def enviar_correo_evaluador(self, request, folio):
-        from django.shortcuts import redirect
-        from django.core.mail import send_mail
-        from django.conf import settings
-
-        proyecto = Proyecto.objects.get(pk=folio)
-        formato1 = Formato1.objects.get(folio=proyecto.folio)
-        evaluador = proyecto.evaluador
-
-        if evaluador and evaluador.correo_evaluador:
-            send_mail(
-                subject="Notificación de Proyecto Asignado",
-                message=(
-                    f"Estimado/a {evaluador.nombre_completo},\n\n"
-                    f"Se le ha asignado el proyecto:\n"
-                    f"Folio: {proyecto.folio}\n\n"
-                    f" **Introducción:**\n{formato1.introduccion}\n\n"
-                    f" **Justificación:**\n{formato1.justificacion}\n\n"
-                    f" **Objetivo:**\n{formato1.objetivo}\n\n"
-                    f" **Resumen:**\n{formato1.resumen}\n\n"
-                    
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[evaluador.correo_evaluador],
-                fail_silently=False,
-            )
-
-            self.message_user(request, "📧 Correo enviado al evaluador.")
-        else:
-            self.message_user(request, "❌ El evaluador no tiene correo.", level='error')
-
-        return redirect(f'../../{folio}/change/')
-
-
-
-    # --- URL personalizada ---
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path(
-                'enviar-correo/<str:folio>/',
-                self.admin_site.admin_view(self.enviar_correo),
-                name='enviar_correo'
-            ),
-            path(
-                'enviar-correo-evaluador/<str:folio>/',
-                self.admin_site.admin_view(self.enviar_correo_evaluador),
-                name='enviar_correo_evaluador'
-            ),
-            path(
-                'importar-forms/',
-                self.admin_site.admin_view(self.importar_forms),
-                name='importar_forms_admin'
-            ),
-        ]
-        return custom_urls + urls
-
-
-    # --- Lógica del envío de correo ---
     def enviar_correo(self, request, folio):
         proyecto = Proyecto.objects.get(pk=folio)
-
         destinatarios = []
 
-        # Correos de asesor y evaluador
         if proyecto.asesor and proyecto.asesor.correo_electronico:
             destinatarios.append(proyecto.asesor.correo_electronico)
         if proyecto.evaluador and proyecto.evaluador.correo_evaluador:
             destinatarios.append(proyecto.evaluador.correo_evaluador)
-
-        # Correos de alumnos participantes
+        
         for participacion in proyecto.participacion_set.all():
             alumno = participacion.alumno
             if alumno and alumno.correo_electronico:
                 destinatarios.append(alumno.correo_electronico)
 
-        destinatarios = list(set(destinatarios))  # quitar duplicados
+        destinatarios = list(set(destinatarios))
 
         if not destinatarios:
             messages.error(request, "❌ No hay correos registrados para este proyecto.")
             return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
-        # Mensaje del correo
         asunto = f"Notificación del Proyecto {proyecto.folio}"
         mensaje = (
             f"Estimados participantes,\n\n"
@@ -174,54 +125,55 @@ class ProyectoAdmin(admin.ModelAdmin):
             f"Atentamente,\nComité de Evaluación"
         )
 
+        send_mail(asunto, mensaje, None, destinatarios, fail_silently=False)
+        messages.success(request, f"✅ Correo enviado correctamente a los participantes.")
+        return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
+
+    # ✅ AQUÍ ESTÁ LA CORRECCIÓN IMPORTANTE
+    def enviar_correo_evaluador(self, request, folio):
+        proyecto = Proyecto.objects.get(pk=folio)
+
+        # 1. Validar que exista evaluador
+        if not proyecto.evaluador or not proyecto.evaluador.correo_evaluador:
+            messages.error(request, "❌ Este proyecto no tiene correo de evaluador registrado.")
+            return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
+
+        # 2. Validar que exista el Formato 1 (porque de ahí sacamos la info)
+        if not hasattr(proyecto, 'formato1_data'):
+            messages.error(request, "❌ No se puede enviar correo: El proyecto no tiene la documentación (Formato 1) registrada.")
+            return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
+
+        # 3. Accedemos a los datos usando el related_name que definimos en models.py
+        formato = proyecto.formato1_data 
+        destinatario = proyecto.evaluador.correo_evaluador
+
+        asunto = f"[Evaluación] Información del Proyecto {proyecto.folio}"
+
+        # 4. Usamos 'formato.introduccion' en lugar de 'proyecto.introduccion'
+        mensaje = (
+            f"Estimado evaluador,\n\n"
+            f"Se le ha asignado el proyecto con los siguientes datos:\n\n"
+            f"• Folio: {proyecto.folio}\n"
+            f"• Título: {proyecto.titulo}\n\n"
+            f"--- INTRODUCCIÓN ---\n{formato.introduccion}\n\n"    # <--- OJO AQUÍ
+            f"--- JUSTIFICACIÓN ---\n{formato.justificacion}\n\n"  # <--- Y AQUÍ
+            f"--- OBJETIVO ---\n{formato.objetivo}\n\n"            # <--- Y AQUÍ
+            f"--- RESUMEN ---\n{formato.resumen}\n\n"              # <--- Y AQUÍ
+            f"Por favor ingrese a SIGAP para continuar con el proceso de evaluación.\n\n"
+            f"Atentamente,\n"
+            f"Comité de Evaluación"
+        )
+
         send_mail(
             subject=asunto,
             message=mensaje,
-            from_email=None,
-            recipient_list=destinatarios,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[destinatario],
             fail_silently=False,
         )
 
-        messages.success(request, f"✅ Correo enviado correctamente a los participantes del proyecto {proyecto.folio}.")
+        messages.success(request, f"✅ Correo enviado al evaluador del proyecto {proyecto.folio}.")
         return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
-
-
-def enviar_correo_evaluador(self, request, folio):
-    proyecto = Proyecto.objects.get(pk=folio)
-
-    if not proyecto.evaluador or not proyecto.evaluador.correo_evaluador:
-        messages.error(request, "❌ Este proyecto no tiene correo de evaluador registrado.")
-        return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
-
-    destinatario = proyecto.evaluador.correo_evaluador
-
-    # Construcción del mensaje con los campos solicitados
-    asunto = f"[Evaluación] Información del Proyecto {proyecto.folio}"
-
-    mensaje = (
-        f"Estimado evaluador,\n\n"
-        f"Se le ha asignado el proyecto con los siguientes datos:\n\n"
-        f"• Folio: {proyecto.folio}\n"
-        f"• Título: {proyecto.titulo}\n\n"
-        f"--- INTRODUCCIÓN ---\n{proyecto.introduccion}\n\n"
-        f"--- JUSTIFICACIÓN ---\n{proyecto.justificacion}\n\n"
-        f"--- OBJETIVO ---\n{proyecto.objetivo}\n\n"
-        f"--- RESUMEN ---\n{proyecto.resumen}\n\n"
-        f"Por favor ingrese a SIGAP para continuar con el proceso de evaluación.\n\n"
-        f"Atentamente,\n"
-        f"Comité de Evaluación"
-    )
-
-    send_mail(
-        subject=asunto,
-        message=mensaje,
-        from_email=None,
-        recipient_list=[destinatario],
-        fail_silently=False,
-    )
-
-    messages.success(request, f"✅ Correo enviado al evaluador del proyecto {proyecto.folio}.")
-    return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
 
 @admin.register(Participacion)
@@ -233,5 +185,9 @@ class ParticipacionAdmin(admin.ModelAdmin):
 
 @admin.register(Formato1)
 class Formato1Admin(admin.ModelAdmin):
-    list_display = ('folio', 'resumen')
-    search_fields = ('folio', 'resumen', 'introduccion')
+    # Ajustamos esto porque 'folio' ya no es un campo directo visible fácilmente
+    list_display = ('proyecto', 'resumen_corto') 
+    search_fields = ('proyecto__folio', 'introduccion')
+
+    def resumen_corto(self, obj):
+        return obj.resumen[:50] + "..."
