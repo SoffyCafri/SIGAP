@@ -131,48 +131,61 @@ class ProyectoAdmin(admin.ModelAdmin):
 
     # ✅ AQUÍ ESTÁ LA CORRECCIÓN IMPORTANTE
     def enviar_correo_evaluador(self, request, folio):
+        """
+        Envía los detalles técnicos del proyecto (Formato 1) al evaluador asignado.
+        """
         proyecto = Proyecto.objects.get(pk=folio)
 
-        # 1. Validar que exista evaluador
+        # 1. Validar Evaluador
         if not proyecto.evaluador or not proyecto.evaluador.correo_evaluador:
-            messages.error(request, "❌ Este proyecto no tiene correo de evaluador registrado.")
+            messages.error(request, "❌ Este proyecto no tiene un evaluador con correo asignado.")
             return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
-        # 2. Validar que exista el Formato 1 (porque de ahí sacamos la info)
+        # 2. Validar Documentación (Formato 1)
+        # Usamos el related_name='formato1_data' definido en el modelo
         if not hasattr(proyecto, 'formato1_data'):
-            messages.error(request, "❌ No se puede enviar correo: El proyecto no tiene la documentación (Formato 1) registrada.")
+            messages.error(request, "❌ Error: El proyecto no tiene la documentación (Formato 1) registrada. Llene los datos primero.")
             return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
-        # 3. Accedemos a los datos usando el related_name que definimos en models.py
+        # 3. Preparar Datos
         formato = proyecto.formato1_data 
         destinatario = proyecto.evaluador.correo_evaluador
+        asunto = f"[Evaluación] Asignación de Proyecto {proyecto.folio}"
 
-        asunto = f"[Evaluación] Información del Proyecto {proyecto.folio}"
-
-        # 4. Usamos 'formato.introduccion' en lugar de 'proyecto.introduccion'
+        # Construcción del cuerpo del correo
         mensaje = (
-            f"Estimado evaluador,\n\n"
-            f"Se le ha asignado el proyecto con los siguientes datos:\n\n"
+            f"Estimado/a Evaluador/a,\n\n"
+            f"Se le ha asignado el siguiente proyecto para su revisión en SIGAP:\n\n"
+            f"========================================\n"
+            f"DATOS GENERALES\n"
+            f"========================================\n"
             f"• Folio: {proyecto.folio}\n"
             f"• Título: {proyecto.titulo}\n\n"
-            f"--- INTRODUCCIÓN ---\n{formato.introduccion}\n\n"    # <--- OJO AQUÍ
-            f"--- JUSTIFICACIÓN ---\n{formato.justificacion}\n\n"  # <--- Y AQUÍ
-            f"--- OBJETIVO ---\n{formato.objetivo}\n\n"            # <--- Y AQUÍ
-            f"--- RESUMEN ---\n{formato.resumen}\n\n"              # <--- Y AQUÍ
-            f"Por favor ingrese a SIGAP para continuar con el proceso de evaluación.\n\n"
+            f"========================================\n"
+            f"DOCUMENTACIÓN TÉCNICA\n"
+            f"========================================\n\n"
+            f"--- INTRODUCCIÓN ---\n{formato.introduccion}\n\n"
+            f"--- JUSTIFICACIÓN ---\n{formato.justificacion}\n\n"
+            f"--- OBJETIVO ---\n{formato.objetivo}\n\n"
+            f"--- RESUMEN ---\n{formato.resumen}\n\n"
+            f"========================================\n\n"
+            f"Por favor ingrese al formulario correspondiente para hacer la revisión.\n\n"
             f"Atentamente,\n"
             f"Comité de Evaluación"
         )
 
-        send_mail(
-            subject=asunto,
-            message=mensaje,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[destinatario],
-            fail_silently=False,
-        )
+        try:
+            send_mail(
+                subject=asunto,
+                message=mensaje,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[destinatario],
+                fail_silently=False,
+            )
+            messages.success(request, f"✅ Correo enviado exitosamente al evaluador del proyecto {proyecto.folio}.")
+        except Exception as e:
+            messages.error(request, f"❌ Error al enviar el correo: {e}")
 
-        messages.success(request, f"✅ Correo enviado al evaluador del proyecto {proyecto.folio}.")
         return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
 
