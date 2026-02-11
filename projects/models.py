@@ -20,6 +20,11 @@ class Proyecto(models.Model):
         ('APROBADO', 'APROBADO'),
         ('NO APROBADO', 'NO APROBADO'), 
     ]
+
+    NIVEL_COMPETENCIAS_CHOICES = [
+        ('INTERMEDIO', 'INTERMEDIO'),
+        ('AVANZADO', 'AVANZADO'),
+    ]
     
     folio = models.CharField(max_length=50, primary_key=True, verbose_name="FOLIO DE PROYECTO")
     titulo = models.CharField(max_length=255, verbose_name="TÍTULO DEL PROYECTO")
@@ -27,13 +32,17 @@ class Proyecto(models.Model):
     asesor = models.ForeignKey(Asesor, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="ASESOR ASIGNADO")
     evaluador = models.ForeignKey(Evaluador, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="EVALUADOR ASIGNADO")
 
-    
     modalidad = models.CharField(max_length=50, choices=MODALIDAD_CHOICES, verbose_name="MODALIDAD")
     variante = models.CharField(max_length=50, null=True, blank=True, verbose_name="VARIANTE DE MODALIDAD")
 
     evidencia = models.CharField(max_length=100, default='', blank=True, verbose_name="TIPO DE EVIDENCIA")
 
-    nivel_competencia = models.CharField(max_length=30, null=True, blank=True, verbose_name="MÓDULOS REGISTRADOS")
+    nivel_competencia = models.CharField(
+        max_length=100, 
+        null=True, 
+        blank=True, 
+        verbose_name="MÓDULOS REGISTRADOS"
+    )
     dictamen = models.CharField(
         max_length=50, 
         choices=DICTAMEN_CHOICES,  

@@ -1,11 +1,49 @@
+from django import forms
 from django.contrib import admin, messages
 from django.core.mail import send_mail
 from django.urls import path
 from django.shortcuts import redirect
 from django.utils.html import format_html
-from django.conf import settings # Importante para el remitente
+from django.conf import settings
 from .models import Proyecto, Formato1, Participacion, Prorroga
 from evaluation.models import Evaluaciones
+
+# --------------------------------------------------------------------
+# 1. TU FORMULARIO PERSONALIZADO (Esto ya lo tienes bien)
+# --------------------------------------------------------------------
+class ProyectoForm(forms.ModelForm):
+    OPCIONES_NIVEL = [
+        ('INTERMEDIO', 'INTERMEDIO'),
+        ('AVANZADO', 'AVANZADO'),
+    ]
+
+    nivel_competencia = forms.MultipleChoiceField(
+        choices=OPCIONES_NIVEL,
+        widget=forms.CheckboxSelectMultiple, # Los checkboxes
+        required=False,
+        label="Módulos Registrados"
+    )
+
+    class Meta:
+        model = Proyecto
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Convertir texto "A, B" a lista ['A', 'B'] para visualización
+        if self.instance and self.instance.pk and self.instance.nivel_competencia:
+            try:
+                vals = self.instance.nivel_competencia.split(',')
+                self.initial['nivel_competencia'] = [x.strip() for x in vals]
+            except:
+                self.initial['nivel_competencia'] = []
+
+    def clean_nivel_competencia(self):
+        # Convertir lista ['A', 'B'] a texto "A, B" para guardado
+        data = self.cleaned_data['nivel_competencia']
+        if not data:
+            return None
+        return ", ".join(data)
 
 # --- Inlines ---
 
@@ -35,6 +73,9 @@ class EvaluacionesInline(admin.TabularInline):
 
 @admin.register(Proyecto)
 class ProyectoAdmin(admin.ModelAdmin):
+
+    form = ProyectoForm
+    
     list_display = (
         'folio', 'titulo', 'asesor', 'evaluador', 'modalidad',
         'calendario_registro', 'dictamen',
