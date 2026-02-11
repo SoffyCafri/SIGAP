@@ -14,6 +14,12 @@ class Proyecto(models.Model):
         ('REPORTE', 'REPORTE'),
         ('VINCULACION SOCIAL', 'VINCULACION SOCIAL'),
     ]
+
+    DICTAMEN_CHOICES = [
+        ('PENDIENTE', 'PENDIENTE'),
+        ('APROBADO', 'APROBADO'),
+        ('NO APROBADO', 'NO APROBADO'), 
+    ]
     
     folio = models.CharField(max_length=50, primary_key=True, verbose_name="FOLIO DE PROYECTO")
     titulo = models.CharField(max_length=255, verbose_name="TÍTULO DEL PROYECTO")
@@ -28,7 +34,12 @@ class Proyecto(models.Model):
     evidencia = models.CharField(max_length=100, default='', blank=True, verbose_name="TIPO DE EVIDENCIA")
 
     nivel_competencia = models.CharField(max_length=30, null=True, blank=True, verbose_name="MÓDULOS REGISTRADOS")
-    dictamen = models.CharField(max_length=50, default='PENDIENTE', verbose_name="DICTAMEN FINAL")
+    dictamen = models.CharField(
+        max_length=50, 
+        choices=DICTAMEN_CHOICES,  
+        default='PENDIENTE', 
+        verbose_name="DICTAMEN FINAL"
+    )
     calendario_registro = models.CharField(max_length=10, verbose_name="CALENDARIO")
     
     evidencia_url = models.URLField(max_length=500, null=True, blank=True, verbose_name="URL EVIDENCIA PRINCIPAL")
