@@ -24,6 +24,9 @@ class Proyecto(models.Model):
     
     modalidad = models.CharField(max_length=50, choices=MODALIDAD_CHOICES, verbose_name="MODALIDAD")
     variante = models.CharField(max_length=50, null=True, blank=True, verbose_name="VARIANTE DE MODALIDAD")
+
+    evidencia = models.CharField(max_length=100, default='', blank=True, verbose_name="TIPO DE EVIDENCIA")
+
     nivel_competencia = models.CharField(max_length=30, null=True, blank=True, verbose_name="MÓDULOS REGISTRADOS")
     dictamen = models.CharField(max_length=50, default='PENDIENTE', verbose_name="DICTAMEN FINAL")
     calendario_registro = models.CharField(max_length=10, verbose_name="CALENDARIO")
@@ -44,6 +47,8 @@ class Proyecto(models.Model):
             self.titulo = self.titulo.upper()
         if self.variante:
             self.variante = self.variante.upper()
+        if self.evidencia: 
+            self.evidencia = self.evidencia.upper()
         if self.nivel_competencia:
             self.nivel_competencia = self.nivel_competencia.upper()
         if self.dictamen:
