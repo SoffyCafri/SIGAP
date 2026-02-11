@@ -16,3 +16,4 @@ postgres_data/
 .env
 credentials/google-sheets.json
 google_service_account.json.json 
+SIGAP/credentials/google_service_account.json
