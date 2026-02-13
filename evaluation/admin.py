@@ -1,9 +1,11 @@
-# evaluations/admin.py
-
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.core.mail import send_mail
 from django.conf import settings
+from django.urls import path
+from django.shortcuts import redirect
+
 from .models import Evaluaciones
+from .import_evaluaciones_forms import importar_evaluaciones_forms
 
 
 admin.site.site_header = "Panel Administrativo QFB"
@@ -22,6 +24,8 @@ class EvaluacionesAdmin(admin.ModelAdmin):
     readonly_fields = ('fecha_evaluacion',)
     autocomplete_fields = ['proyecto', 'evaluador']
 
+    change_list_template = "admin/projects/proyecto/evaluaciones_change_list.html"
+
     # DEFAULT EN ADMIN
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
@@ -38,9 +42,7 @@ class EvaluacionesAdmin(admin.ModelAdmin):
 
         super().save_model(request, obj, form, change)
 
-        # Solo enviar si cambió a APROBADO
         if obj.resolutivo == "APROBADO" and resolutivo_anterior != "APROBADO":
-
             rep = obj.proyecto.participacion_set.filter(es_representante=True).first()
 
             if rep and rep.alumno.correo_electronico:
@@ -51,3 +53,20 @@ class EvaluacionesAdmin(admin.ModelAdmin):
                     recipient_list=[rep.alumno.correo_electronico],
                     fail_silently=False,
                 )
+
+    # ✅ BOTÓN IMPORTAR
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "importar-evaluaciones-forms/",
+                self.admin_site.admin_view(self.importar_evaluaciones_forms_view),
+                name="importar_evaluaciones_forms"
+            )
+        ]
+        return custom_urls + urls
+
+    def importar_evaluaciones_forms_view(self, request):
+        total = importar_evaluaciones_forms()
+        messages.success(request, f"✔ {total} evaluaciones importadas desde Forms")
+        return redirect("..")
