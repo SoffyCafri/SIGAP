@@ -39,7 +39,10 @@ def importar_evaluaciones_forms():
     if not rows:
         return 0
 
+    
     headers = [h.strip() for h in rows[0]]
+    headers_normalizados = {h.strip().upper(): h for h in headers}
+
     data_rows = rows[1:]
     count = 0
 
@@ -50,35 +53,54 @@ def importar_evaluaciones_forms():
         data = dict(zip(headers, row))
 
         # ================= FOLIO =================
-        folio = data.get("Ingresa el folio de tu proyecto asignado")
+        folio_col = headers_normalizados.get("INGRESA EL FOLIO DE TU PROYECTO ASIGNADO")
+        if not folio_col:
+            continue
+
+        folio = data.get(folio_col)
         if not folio:
             continue
 
         try:
-            proyecto = Proyecto.objects.get(folio=folio)
+            proyecto = Proyecto.objects.get(folio=folio.strip())
         except Proyecto.DoesNotExist:
             continue
 
         # ================= TIPO REVISION =================
-        tipo_raw = normalizar(data.get("¿La corrección es de fondo o forma?"))
+        tipo_col = headers_normalizados.get("¿LA CORRECCIÓN ES DE FONDO O FORMA?")
+        tipo_raw = normalizar(data.get(tipo_col))
+
         tipo_map = {
             "FONDO": "FONDO",
             "FORMA": "FORMA",
             "NO APLICA": "FINAL"
         }
+
         tipo_revision = tipo_map.get(tipo_raw, "FORMA")
 
         # ================= OBSERVACIONES =================
-        observaciones = normalizar(data.get("Observaciones"))
+        obs_col = headers_normalizados.get("OBSERVACIONES")
+        observaciones = data.get(obs_col, "")
 
         # ================= FECHA =================
-        fecha_str = data.get("Marca temporal")
+        fecha_col = headers_normalizados.get("MARCA TEMPORAL")
+        fecha_str = data.get(fecha_col)
+
         if fecha_str:
-            fecha = make_aware(datetime.strptime(fecha_str, "%d/%m/%Y %H:%M:%S"))
+            try:
+                fecha = make_aware(datetime.strptime(fecha_str, "%d/%m/%Y %H:%M:%S"))
+            except:
+                fecha = make_aware(datetime.now())
         else:
             fecha = make_aware(datetime.now())
 
-        # ================= GUARDAR =================
+        
+        if Evaluaciones.objects.filter(
+            proyecto=proyecto,
+            fecha_evaluacion=fecha
+        ).exists():
+            continue
+
         Evaluaciones.objects.create(
             proyecto=proyecto,
             evaluador=None,
