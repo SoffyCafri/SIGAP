@@ -6,6 +6,7 @@ from datetime import datetime
 from projects.models import Proyecto
 from evaluation.models import Evaluaciones
 from django.conf import settings
+from people.models import Evaluador 
 import os
 
 # ================= GOOGLE SHEETS CONFIG =================
@@ -27,7 +28,7 @@ def normalizar(texto):
 # ================= IMPORTADOR PRINCIPAL =================
 def importar_evaluaciones_forms():
     if not os.path.exists(RUTA_CREDENCIALES):
-        # Esto "lanza" el error hacia arriba con un mensaje claro
+        # Error en caso de que no se encuentre las credenciales 
         raise FileNotFoundError(f"❌ CRÍTICO: No se encontró el archivo de credenciales en: {RUTA_CREDENCIALES}")
     
     try:
@@ -77,6 +78,27 @@ def importar_evaluaciones_forms():
         except Proyecto.DoesNotExist:
             continue
 
+        # ================= EVALUADOR =================
+        # Buscamos la columna del correo. Google Forms suele llamarla así:
+        email_col = headers_normalizados.get("DIRECCIÓN DE CORREO ELECTRÓNICO")
+        
+        # Si no la encuentra por ese nombre, intenta buscar 'EMAIL ADDRESS' o similar
+        if not email_col:
+             email_col = headers_normalizados.get("EMAIL ADDRESS")
+
+        email_evaluador = data.get(email_col)
+
+        if not email_evaluador:
+            print(f"⚠ Registro sin correo de evaluador. Folio: {folio}")
+            continue # Si no hay correo en el excel, bateamos el registro.
+
+        try:
+            # Buscamos al evaluador en la BD por su correo
+            evaluador_obj = Evaluador.objects.get(correo_evaluador=email_evaluador.strip())
+        except Evaluador.DoesNotExist:
+            print(f"⛔ Evaluador no registrado en sistema: {email_evaluador}. Se omite la evaluación.")
+            continue # Bateamos el registro si el evaluador no existe en el sistema.
+
         # ================= TIPO REVISION =================
         tipo_col = headers_normalizados.get("¿LA CORRECCIÓN ES DE FONDO O FORMA?")
         tipo_raw = normalizar(data.get(tipo_col))
@@ -114,7 +136,7 @@ def importar_evaluaciones_forms():
 
         Evaluaciones.objects.create(
             proyecto=proyecto,
-            evaluador=None,
+            evaluador=evaluador_obj,
             tipo_revision=tipo_revision,
             resolutivo="PENDIENTE",
             observaciones=observaciones,
