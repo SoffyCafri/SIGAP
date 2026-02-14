@@ -23,8 +23,13 @@ class Evaluaciones(models.Model):
         verbose_name="EVALUADOR ASIGNADO"
     )
 
-    fecha_evaluacion = models.DateTimeField(auto_now_add=True, verbose_name="FECHA DE EVALUACIÓN")
+    fecha_evaluacion = models.DateTimeField(verbose_name="FECHA DE EVALUACIÓN")
 
+    no_revision = models.PositiveIntegerField(
+        default=1, 
+        verbose_name="NÚMERO DE REVISIÓN"
+    )
+    
     REVISION_CHOICES = [
         ('FORMA', 'Revisión de Forma'),
         ('FONDO', 'Revisión de Fondo'),
@@ -60,6 +65,12 @@ class Evaluaciones(models.Model):
         ordering = ['-fecha_evaluacion']
 
     def save(self, *args, **kwargs):
+        if not self.pk: 
+            # Contamos cuántas evaluaciones tiene YA este proyecto
+            conteo_previo = Evaluaciones.objects.filter(proyecto=self.proyecto).count()
+            # La nueva revisión será el conteo + 1
+            self.no_revision = conteo_previo + 1
+
         # Convertir textos a MAYÚSCULAS
         for field in self._meta.fields:
             if isinstance(field, (models.CharField, models.TextField)):
