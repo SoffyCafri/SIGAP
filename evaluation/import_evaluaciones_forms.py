@@ -14,9 +14,10 @@ SPREADSHEET_ID = "1LJKWlgLL9qi1a8C_KoiEB65ZCJiW2mxze0Aj5Sa_K7c"
 RANGE_NAME = "Respuestas de formulario 1!A:Z"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
+# Ajusta el nombre si tu archivo tiene doble .json o no
 RUTA_CREDENCIALES = os.path.join(
     settings.BASE_DIR,
-    "google_service_account.json.json"
+    "google_service_account.json.json" 
 )
 
 
@@ -27,8 +28,8 @@ def normalizar(texto):
 
 # ================= IMPORTADOR PRINCIPAL =================
 def importar_evaluaciones_forms():
+    # 1. Validación de Archivo de Credenciales
     if not os.path.exists(RUTA_CREDENCIALES):
-        # Error en caso de que no se encuentre las credenciales 
         raise FileNotFoundError(f"❌ CRÍTICO: No se encontró el archivo de credenciales en: {RUTA_CREDENCIALES}")
     
     try:
@@ -39,6 +40,7 @@ def importar_evaluaciones_forms():
     service = build("sheets", "v4", credentials=creds)
     sheet = service.spreadsheets()
 
+    # 2. Conexión a Google Sheets
     try:
         result = sheet.values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -48,58 +50,62 @@ def importar_evaluaciones_forms():
         raise Exception(f"Error conectando con Google Sheets: {e}")
 
     rows = result.get("values", [])
-    if not rows:
-        return 0
-
     
+    # IMPORTANTE: Si no hay filas, devolvemos 0 éxitos y lista vacía de errores
+    if not rows:
+        return 0, []
+
+    # 3. Procesamiento de Headers
     headers = [h.strip() for h in rows[0]]
     headers_normalizados = {h.strip().upper(): h for h in headers}
 
     data_rows = rows[1:]
     count = 0
+    errores = [] # Lista para acumular los reportes de filas ignoradas
 
-    for row in data_rows:
+    for i, row in enumerate(data_rows):
+        # Número de fila humano (Excel empieza en 1, headers es 1, data empieza en 2)
+        num_fila_excel = i + 2 
+
         if len(row) < len(headers):
             row += [None] * (len(headers) - len(row))
 
         data = dict(zip(headers, row))
 
-        # ================= FOLIO =================
+        # ================= A. FOLIO =================
         folio_col = headers_normalizados.get("INGRESA EL FOLIO DE TU PROYECTO ASIGNADO")
-        if not folio_col:
-            continue
+        if not folio_col: 
+            # Si no existe la columna, es un error grave de estructura del Excel
+            continue 
 
         folio = data.get(folio_col)
         if not folio:
+            # Si la fila no tiene folio, la ignoramos sin error (fila vacía)
             continue
 
         try:
             proyecto = Proyecto.objects.get(folio=folio.strip())
         except Proyecto.DoesNotExist:
+            errores.append(f"Fila {num_fila_excel}: Folio '{folio}' no encontrado en el sistema.")
             continue
 
-        # ================= EVALUADOR =================
-        # Buscamos la columna del correo. Google Forms suele llamarla así:
-        email_col = headers_normalizados.get("DIRECCIÓN DE CORREO ELECTRÓNICO")
-        
-        # Si no la encuentra por ese nombre, intenta buscar 'EMAIL ADDRESS' o similar
-        if not email_col:
-             email_col = headers_normalizados.get("EMAIL ADDRESS")
-
+        # ================= B. EVALUADOR (Lógica de Correo) =================
+        email_col = headers_normalizados.get("DIRECCIÓN DE CORREO ELECTRÓNICO") or headers_normalizados.get("EMAIL ADDRESS")
         email_evaluador = data.get(email_col)
 
         if not email_evaluador:
-            print(f"⚠ Registro sin correo de evaluador. Folio: {folio}")
-            continue # Si no hay correo en el excel, bateamos el registro.
+            errores.append(f"Fila {num_fila_excel}: Registro sin correo electrónico (Folio {folio}).")
+            continue
 
         try:
-            # Buscamos al evaluador en la BD por su correo
-            evaluador_obj = Evaluador.objects.get(correo_evaluador=email_evaluador.strip())
+            # Buscamos al evaluador por correo (usamos iexact por si hay mayúsculas/minúsculas diferentes)
+            evaluador_obj = Evaluador.objects.get(correo_evaluador__iexact=email_evaluador.strip())
         except Evaluador.DoesNotExist:
-            print(f"⛔ Evaluador no registrado en sistema: {email_evaluador}. Se omite la evaluación.")
-            continue # Bateamos el registro si el evaluador no existe en el sistema.
+            # AQUÍ BATEAMOS EL REGISTRO
+            errores.append(f"Fila {num_fila_excel}: El evaluador '{email_evaluador}' no existe en la base de datos.")
+            continue 
 
-        # ================= TIPO REVISION =================
+        # ================= C. OTROS DATOS =================
         tipo_col = headers_normalizados.get("¿LA CORRECCIÓN ES DE FONDO O FORMA?")
         tipo_raw = normalizar(data.get(tipo_col))
 
@@ -108,14 +114,11 @@ def importar_evaluaciones_forms():
             "FORMA": "FORMA",
             "NO APLICA": "FINAL"
         }
-
         tipo_revision = tipo_map.get(tipo_raw, "FORMA")
 
-        # ================= OBSERVACIONES =================
         obs_col = headers_normalizados.get("OBSERVACIONES")
         observaciones = data.get(obs_col, "")
 
-        # ================= FECHA =================
         fecha_col = headers_normalizados.get("MARCA TEMPORAL")
         fecha_str = data.get(fecha_col)
 
@@ -128,15 +131,18 @@ def importar_evaluaciones_forms():
             fecha = make_aware(datetime.now())
 
         
+        # ================= D. DUPLICADOS Y GUARDADO =================
+        # Verifica si ya existe esta evaluación para no duplicarla al correr el script de nuevo
         if Evaluaciones.objects.filter(
             proyecto=proyecto,
             fecha_evaluacion=fecha
         ).exists():
             continue
 
+        # Guardamos usando el objeto evaluador que encontramos arriba
         Evaluaciones.objects.create(
             proyecto=proyecto,
-            evaluador=evaluador_obj,
+            evaluador=evaluador_obj,  
             tipo_revision=tipo_revision,
             resolutivo="PENDIENTE",
             observaciones=observaciones,
@@ -145,4 +151,4 @@ def importar_evaluaciones_forms():
 
         count += 1
 
-    return count
+    return count, errores

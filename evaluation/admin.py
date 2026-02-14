@@ -7,6 +7,8 @@ from django.utils import timezone
 
 from .models import Evaluaciones
 from .import_evaluaciones_forms import importar_evaluaciones_forms
+from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 
 
 admin.site.site_header = "Panel Administrativo QFB"
@@ -70,12 +72,28 @@ class EvaluacionesAdmin(admin.ModelAdmin):
 
     def importar_evaluaciones_forms_view(self, request):
         try:
-            total = importar_evaluaciones_forms()
+            # 1. Desempaquetamos los DOS valores de retorno
+            total_exitos, lista_errores = importar_evaluaciones_forms()
             
-            if total > 0:
-                messages.success(request, f"✔ Éxito: Se importaron {total} evaluaciones nuevas desde Forms.")
-            else:
-                messages.warning(request, "⚠ El proceso se ejecutó correctamente, pero no se encontraron evaluaciones nuevas.")
+            # 2. Mensaje de Éxito 
+            if total_exitos > 0:
+                messages.success(request, f"✔ Éxito: Se crearon {total_exitos} evaluaciones nuevas.")
+            
+            # 3. Mensaje de Advertencia con Detalles 
+            if lista_errores:
+                # Convertimos la lista de errores en una lista HTML
+                items_html = "".join([f"<li>{err}</li>" for err in lista_errores])
+                mensaje_html = format_html(
+                    "⚠ Se encontraron los siguientes problemas en el archivo:<br>"
+                    "<ul style='margin-top:5px; margin-bottom:0;'>{}</ul>",
+                    mark_safe(items_html)
+                )
+                # Usamos el nivel WARNING para que salga amarillo
+                messages.warning(request, mensaje_html)
+
+            # 4. Mensaje Informativo 
+            if total_exitos == 0 and not lista_errores:
+                messages.info(request, "ℹ El proceso terminó correctamente, pero no había registros nuevos para importar.")
 
         except FileNotFoundError as e:
             messages.error(request, str(e))
@@ -83,5 +101,4 @@ class EvaluacionesAdmin(admin.ModelAdmin):
         except Exception as e:
             messages.error(request, f"❌ Ocurrió un error inesperado: {e}")
 
-            
         return redirect("..")
