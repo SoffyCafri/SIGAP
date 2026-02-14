@@ -67,6 +67,19 @@ class EvaluacionesAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def importar_evaluaciones_forms_view(self, request):
-        total = importar_evaluaciones_forms()
-        messages.success(request, f"✔ {total} evaluaciones importadas desde Forms")
+        try:
+            total = importar_evaluaciones_forms()
+            
+            if total > 0:
+                messages.success(request, f"✔ Éxito: Se importaron {total} evaluaciones nuevas desde Forms.")
+            else:
+                messages.warning(request, "⚠ El proceso se ejecutó correctamente, pero no se encontraron evaluaciones nuevas.")
+
+        except FileNotFoundError as e:
+            messages.error(request, str(e))
+            
+        except Exception as e:
+            messages.error(request, f"❌ Ocurrió un error inesperado: {e}")
+
+            
         return redirect("..")

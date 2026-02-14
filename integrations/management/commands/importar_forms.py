@@ -93,7 +93,7 @@ class Command(BaseCommand):
             
             # 1. Detección de columnas repetidas (TEXTO)
             variante_detectada = buscar_valor_repetido(headers, row, "VARIANTE")
-            evidencia_texto_detectada = buscar_valor_repetido(headers, row, "EVIDENCIA") # <--- AQUI CAPTURAMOS EL TEXTO
+            evidencia_texto_detectada = buscar_valor_repetido(headers, row, "EVIDENCIA") 
 
             # 2. Diccionario estándar
             data = dict(zip(headers, row))

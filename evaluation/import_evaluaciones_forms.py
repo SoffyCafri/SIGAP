@@ -26,14 +26,25 @@ def normalizar(texto):
 
 # ================= IMPORTADOR PRINCIPAL =================
 def importar_evaluaciones_forms():
-    creds = Credentials.from_service_account_file(RUTA_CREDENCIALES, scopes=SCOPES)
+    if not os.path.exists(RUTA_CREDENCIALES):
+        # Esto "lanza" el error hacia arriba con un mensaje claro
+        raise FileNotFoundError(f"❌ CRÍTICO: No se encontró el archivo de credenciales en: {RUTA_CREDENCIALES}")
+    
+    try:
+        creds = Credentials.from_service_account_file(RUTA_CREDENCIALES, scopes=SCOPES)
+    except Exception as e:
+        raise Exception(f"El archivo existe pero las credenciales son inválidas: {e}")
+    
     service = build("sheets", "v4", credentials=creds)
     sheet = service.spreadsheets()
 
-    result = sheet.values().get(
-        spreadsheetId=SPREADSHEET_ID,
-        range=RANGE_NAME
-    ).execute()
+    try:
+        result = sheet.values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=RANGE_NAME
+        ).execute()
+    except Exception as e:
+        raise Exception(f"Error conectando con Google Sheets: {e}")
 
     rows = result.get("values", [])
     if not rows:
