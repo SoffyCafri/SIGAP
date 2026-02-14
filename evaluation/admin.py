@@ -3,6 +3,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.urls import path
 from django.shortcuts import redirect
+from django.utils import timezone
 
 from .models import Evaluaciones
 from .import_evaluaciones_forms import importar_evaluaciones_forms
@@ -16,12 +17,12 @@ admin.site.site_url = None
 
 @admin.register(Evaluaciones)
 class EvaluacionesAdmin(admin.ModelAdmin):
-    list_display = ('id_evaluacion', 'proyecto', 'evaluador', 'tipo_revision', 'resolutivo', 'fecha_evaluacion')
+    list_display = ('no_revision', 'proyecto', 'evaluador', 'tipo_revision', 'resolutivo', 'fecha_evaluacion')
     list_editable = ('resolutivo',)
     list_filter = ('tipo_revision', 'resolutivo', 'evaluador', 'fecha_evaluacion')
     search_fields = ('proyecto__folio', 'evaluador__nombre_completo', 'observaciones')
 
-    readonly_fields = ('fecha_evaluacion',)
+    readonly_fields = ('no_revision',)
     autocomplete_fields = ['proyecto', 'evaluador']
 
     change_list_template = "admin/projects/proyecto/evaluaciones_change_list.html"
@@ -31,6 +32,7 @@ class EvaluacionesAdmin(admin.ModelAdmin):
         form = super().get_form(request, obj, **kwargs)
         if obj is None:
             form.base_fields["resolutivo"].initial = "NO_APLICA"
+            form.base_fields["fecha_evaluacion"].initial = timezone.now()
         return form
 
     # 🔥 ENVÍO DE CORREO CUANDO SE APRUEBA
@@ -48,7 +50,7 @@ class EvaluacionesAdmin(admin.ModelAdmin):
             if rep and rep.alumno.correo_electronico:
                 send_mail(
                     subject="🎉 Tu proyecto fue APROBADO",
-                    message=f"Tu proyecto con folio {obj.proyecto.folio} fue APROBADO.",
+                    message=f"Tu proyecto con folio {obj.proyecto.folio} fue APROBADO por tu evaluador.",
                     from_email=settings.DEFAULT_FROM_EMAIL,
                     recipient_list=[rep.alumno.correo_electronico],
                     fail_silently=False,
