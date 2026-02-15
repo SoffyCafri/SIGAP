@@ -89,6 +89,25 @@ def importar_evaluaciones_forms():
             errores.append(f"Fila {num_fila_excel}: Folio '{folio}' no encontrado en el sistema.")
             continue
 
+        # ================= NUEVO: BLOQUEO DE PROYECTOS CERRADOS =================
+        # Si el proyecto YA tiene un dictamen final, prohibimos nuevas evaluaciones.
+        if proyecto.dictamen in ['APROBADO', 'NO APROBADO']:
+            errores.append(
+                f"Fila {num_fila_excel}: BLOQUEADO. El proyecto {folio} ya tiene dictamen final: '{proyecto.dictamen}'. "
+                "No se admiten más evaluaciones."
+            )
+            continue
+            
+        # ================= VALIDACIÓN DE 4TO INTENTO (RED DE SEGURIDAD) =================
+        # Por si acaso el dictamen no se actualizó, contamos manualmente.
+        # Si ya existen 3 o más evaluaciones registradas, no dejamos pasar la 4ta.
+        conteo_actual = Evaluaciones.objects.filter(proyecto=proyecto).count()
+        if conteo_actual >= 3:
+             errores.append(
+                f"Fila {num_fila_excel}: LÍMITE EXCEDIDO. El proyecto {folio} ya tiene 3 evaluaciones registradas. "
+                "No se puede registrar una cuarta."
+            ) 
+             continue
         # ================= B. EVALUADOR (Lógica de Correo) =================
         email_col = headers_normalizados.get("DIRECCIÓN DE CORREO ELECTRÓNICO") or headers_normalizados.get("EMAIL ADDRESS")
         email_evaluador = data.get(email_col)
