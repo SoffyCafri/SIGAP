@@ -65,11 +65,10 @@ class Evaluaciones(models.Model):
         ordering = ['-fecha_evaluacion']
 
     def save(self, *args, **kwargs):
-        # 1. LÓGICA DE MAYÚSCULAS Y CONTEO (Lo que ya tenías)
-        is_new = self.pk is None # Detectamos si es nuevo antes de guardar
+        # 1. LÓGICA DE MAYÚSCULAS Y CONTEO
+        is_new = self.pk is None 
         
         if is_new:
-            # Contamos cuántas hay guardadas en BD (sin contar esta nueva aún)
             conteo_previo = Evaluaciones.objects.filter(proyecto=self.proyecto).count()
             self.no_revision = conteo_previo + 1
 
@@ -79,31 +78,33 @@ class Evaluaciones(models.Model):
                 if isinstance(valor, str):
                     setattr(self, field.name, valor.upper())
 
-        # 2. GUARDAMOS LA EVALUACIÓN PRIMERO
-        # Es necesario guardar primero para que el registro exista y sea oficial
+        # 2. GUARDAR EVALUACIÓN
         super().save(*args, **kwargs)
 
         # 3. LÓGICA DE ACTUALIZACIÓN DEL PROYECTO
-        proyecto = self.proyecto
-        hubo_cambios = False # Bandera para saber si necesitamos guardar el proyecto
+        # FILTRO DE SEGURIDAD:
+        # Si la evaluación sigue en "NO_APLICA", ignoramos todo. 
+        # No aprobamos ni reprobamos el proyecto todavía.
+        if self.resolutivo == "NO_APLICA":
+            return  
 
-        # Obtenemos el conteo total ACTUALIZADO (incluyendo la que acabamos de guardar)
+        proyecto = self.proyecto
+        hubo_cambios = False 
+
         total_evaluaciones = Evaluaciones.objects.filter(proyecto=proyecto).count()
 
         # --- CASO A: APROBADO ---
-        # Si esta evaluación es APROBADO, el proyecto se aprueba (sin importar el intento)
         if self.resolutivo == 'APROBADO':
-            if proyecto.dictamen != 'APROBADO': # Solo si cambia el estado
+            if proyecto.dictamen != 'APROBADO':
                 proyecto.dictamen = 'APROBADO'
                 hubo_cambios = True
 
         # --- CASO B: GAME OVER (3 INTENTOS FALLIDOS) ---
-        # Si llevamos 3 o más intentos y este último NO es aprobado...
+        # Como ya filtramos el "NO_APLICA" arriba, aquí solo entra PENDIENTE o RECHAZADO
         elif total_evaluaciones >= 3 and self.resolutivo != 'APROBADO':
-            if proyecto.dictamen != 'NO APROBADO': # Solo si cambia el estado
+            if proyecto.dictamen != 'NO APROBADO': 
                 proyecto.dictamen = 'NO APROBADO'
                 hubo_cambios = True
 
-        # 4. GUARDAR CAMBIOS EN EL PROYECTO (Solo si es necesario)
         if hubo_cambios:
             proyecto.save()

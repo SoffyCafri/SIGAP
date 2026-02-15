@@ -161,9 +161,12 @@ def importar_evaluaciones_forms():
         # Guardamos usando el objeto evaluador que encontramos arriba
         Evaluaciones.objects.create(
             proyecto=proyecto,
-            evaluador=evaluador_obj,  
+            evaluador=evaluador_obj,
             tipo_revision=tipo_revision,
-            resolutivo="PENDIENTE",
+            
+            # CAMBIO CLAVE: Entra como NO_APLICA (Zona de espera)
+            resolutivo="NO_APLICA", 
+            
             observaciones=observaciones,
             fecha_evaluacion=fecha
         )
