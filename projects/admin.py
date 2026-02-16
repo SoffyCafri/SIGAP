@@ -5,11 +5,17 @@ from django.urls import path
 from django.shortcuts import redirect
 from django.utils.html import format_html
 from django.conf import settings
+from django.utils.safestring import mark_safe
+
+# Modelos
 from .models import Proyecto, Formato1, Participacion, Prorroga
 from evaluation.models import Evaluaciones
 
+# 🟠 IMPORTANTE: Importa tu nuevo script de correcciones
+from .import_correcciones_formato1 import importar_correcciones_formato1 
+
 # --------------------------------------------------------------------
-# 1. TU FORMULARIO PERSONALIZADO (Esto ya lo tienes bien)
+# 1. TU FORMULARIO PERSONALIZADO
 # --------------------------------------------------------------------
 class ProyectoForm(forms.ModelForm):
     OPCIONES_NIVEL = [
@@ -19,7 +25,7 @@ class ProyectoForm(forms.ModelForm):
 
     nivel_competencia = forms.MultipleChoiceField(
         choices=OPCIONES_NIVEL,
-        widget=forms.CheckboxSelectMultiple, # Los checkboxes
+        widget=forms.CheckboxSelectMultiple,
         required=False,
         label="Módulos Registrados"
     )
@@ -30,7 +36,6 @@ class ProyectoForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Convertir texto "A, B" a lista ['A', 'B'] para visualización
         if self.instance and self.instance.pk and self.instance.nivel_competencia:
             try:
                 vals = self.instance.nivel_competencia.split(',')
@@ -39,7 +44,6 @@ class ProyectoForm(forms.ModelForm):
                 self.initial['nivel_competencia'] = []
 
     def clean_nivel_competencia(self):
-        # Convertir lista ['A', 'B'] a texto "A, B" para guardado
         data = self.cleaned_data['nivel_competencia']
         if not data:
             return None
@@ -76,6 +80,10 @@ class ProyectoAdmin(admin.ModelAdmin):
 
     form = ProyectoForm
     
+    # 🟠 AQUÍ ESTÁ LA MAGIA:
+    # Apuntamos al archivo HTML ÚNICO que contiene LOS DOS BOTONES.
+    change_list_template = "admin/projects/proyecto/change_list.html"
+
     list_display = (
         'folio', 'titulo', 'asesor', 'evaluador', 'modalidad',
         'calendario_registro', 'dictamen',
@@ -98,7 +106,7 @@ class ProyectoAdmin(admin.ModelAdmin):
         EvaluacionesInline
     ]
 
-    # --- Botones personalizados ---
+    # --- Botones personalizados (Por fila) ---
     def boton_enviar_correo(self, obj):
         return format_html(
             '<a class="button" href="enviar-correo/{}/" '
@@ -117,18 +125,58 @@ class ProyectoAdmin(admin.ModelAdmin):
         )
     boton_enviar_correo_evaluador.short_description = "Correo Evaluador"
 
-    # --- URLs Personalizadas ---
+    # ---------------------------------------------------------------
+    # 🟠 CONFIGURACIÓN DE URLS (Para que funcionen los botones naranjas)
+    # ---------------------------------------------------------------
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
+            # Botones de fila
             path('enviar-correo/<str:folio>/', self.admin_site.admin_view(self.enviar_correo), name='enviar_correo'),
             path('enviar-correo-evaluador/<str:folio>/', self.admin_site.admin_view(self.enviar_correo_evaluador), name='enviar_correo_evaluador'),
+            
+            # 🟠 URL BOTÓN 1: Importar Google Forms (Registro Inicial)
             path('importar-forms/', self.admin_site.admin_view(self.importar_forms), name='importar_forms_admin'),
+            
+            # 🟠 URL BOTÓN 2: Importar Correcciones (Formato 1)
+            path(
+                "importar-correcciones/",
+                self.admin_site.admin_view(self.importar_correcciones_view),
+                name="importar_correcciones"
+            )
         ]
         return custom_urls + urls
 
-    # --- LÓGICA DE NEGOCIO ---
+    # ---------------------------------------------------------------
+    # 🟠 LÓGICA DE LOS BOTONES NARANJAS
+    # ---------------------------------------------------------------
 
+    # VISTA 1: Importar Correcciones (Script Python nuevo)
+    def importar_correcciones_view(self, request):
+        try:
+            total_actualizados, lista_errores = importar_correcciones_formato1()
+            
+            if total_actualizados > 0:
+                messages.success(request, f"✅ Se actualizaron {total_actualizados} proyectos con las nuevas correcciones.")
+
+            if lista_errores:
+                items_html = "".join([f"<li>{err}</li>" for err in lista_errores])
+                mensaje_html = format_html(
+                    "⚠️ Reporte de importación:<br>"
+                    "<ul style='margin-top:5px; margin-bottom:0;'>{}</ul>",
+                    mark_safe(items_html)
+                )
+                messages.warning(request, mensaje_html)
+
+            if total_actualizados == 0 and not lista_errores:
+                messages.info(request, "ℹ No se encontraron correcciones nuevas válidas para procesar.")
+
+        except Exception as e:
+            messages.error(request, f"❌ Error crítico: {e}")
+
+        return redirect("..")
+
+    # VISTA 2: Importar Forms Iniciales (Comando de gestión)
     def importar_forms(self, request):
         from django.core.management import call_command
         try:
@@ -137,6 +185,9 @@ class ProyectoAdmin(admin.ModelAdmin):
         except Exception as e:
             messages.error(request, f"❌ Error durante la importación: {e}")
         return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
+
+
+    # --- Resto de funciones de correo (Sin cambios) ---
 
     def enviar_correo(self, request, folio):
         proyecto = Proyecto.objects.get(pk=folio)
@@ -170,30 +221,21 @@ class ProyectoAdmin(admin.ModelAdmin):
         messages.success(request, f"✅ Correo enviado correctamente a los participantes.")
         return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
-    # ✅ AQUÍ ESTÁ LA CORRECCIÓN IMPORTANTE
     def enviar_correo_evaluador(self, request, folio):
-        """
-        Envía los detalles técnicos del proyecto (Formato 1) al evaluador asignado.
-        """
         proyecto = Proyecto.objects.get(pk=folio)
 
-        # 1. Validar Evaluador
         if not proyecto.evaluador or not proyecto.evaluador.correo_evaluador:
             messages.error(request, "❌ Este proyecto no tiene un evaluador con correo asignado.")
             return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
-        # 2. Validar Documentación (Formato 1)
-        # Usamos el related_name='formato1_data' definido en el modelo
         if not hasattr(proyecto, 'formato1_data'):
             messages.error(request, "❌ Error: El proyecto no tiene la documentación (Formato 1) registrada. Llene los datos primero.")
             return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
-        # 3. Preparar Datos
         formato = proyecto.formato1_data 
         destinatario = proyecto.evaluador.correo_evaluador
         asunto = f"[Evaluación] Asignación de Proyecto {proyecto.folio}"
 
-        # Construcción del cuerpo del correo
         mensaje = (
             f"Estimado/a Evaluador/a,\n\n"
             f"Se le ha asignado el siguiente proyecto para su revisión en SIGAP:\n\n"
@@ -239,7 +281,6 @@ class ParticipacionAdmin(admin.ModelAdmin):
 
 @admin.register(Formato1)
 class Formato1Admin(admin.ModelAdmin):
-    # Ajustamos esto porque 'folio' ya no es un campo directo visible fácilmente
     list_display = ('proyecto', 'resumen_corto') 
     search_fields = ('proyecto__folio', 'introduccion')
 
