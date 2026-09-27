@@ -10,6 +10,7 @@ from django.utils.safestring import mark_safe
 # Modelos
 from .models import Proyecto, Formato1, Participacion, Prorroga
 from evaluation.models import Evaluaciones
+from .fuzzy_priority import calcular_prioridad_proyecto
 
 # 🟠 IMPORTANTE: Importa tu nuevo script de correcciones
 from .import_correcciones_formato1 import importar_correcciones_formato1 
@@ -86,7 +87,7 @@ class ProyectoAdmin(admin.ModelAdmin):
 
     list_display = (
         'folio', 'titulo', 'asesor', 'evaluador', 'modalidad',
-        'calendario_registro', 'dictamen',
+        'calendario_registro', 'dictamen', 'prioridad_fuzzy',
         'boton_enviar_correo', 'boton_enviar_correo_evaluador',
     )
 
@@ -107,6 +108,40 @@ class ProyectoAdmin(admin.ModelAdmin):
     ]
 
     # --- Botones personalizados (Por fila) ---
+    def prioridad_fuzzy(self, obj):
+        dias = 0
+        documentos = 0
+        revisiones = 0
+
+        if hasattr(obj, 'formato1_data'):
+            documentos = 0 if not obj.formato1_data else 1
+
+        revisiones = obj.evaluaciones_set.count() if hasattr(obj, 'evaluaciones_set') else 0
+
+        if obj.calendario_registro:
+            try:
+                dias = max(0, 30 - int(obj.calendario_registro[-1]))
+            except (TypeError, ValueError):
+                dias = 0
+
+        prioridad, etiqueta = calcular_prioridad_proyecto(dias, documentos, revisiones)
+        color = {
+            'BAJA': '#2e7d32',
+            'MEDIA': '#f9a825',
+            'ALTA': '#ef6c00',
+            'URGENTE': '#c62828',
+        }.get(etiqueta, '#546e7a')
+        return format_html(
+            '<span style="display:inline-block; padding:4px 8px; border-radius:999px; '
+            'font-weight:600; color:white; background:{}; min-width:90px; text-align:center;">'
+            '{:.0f} - {}'
+            '</span>',
+            color,
+            prioridad,
+            etiqueta,
+        )
+    prioridad_fuzzy.short_description = 'Prioridad'
+
     def boton_enviar_correo(self, obj):
         return format_html(
             '<a class="button" href="enviar-correo/{}/" '
