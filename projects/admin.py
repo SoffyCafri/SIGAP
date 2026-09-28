@@ -108,40 +108,46 @@ class ProyectoAdmin(admin.ModelAdmin):
     ]
 
     # --- Botones personalizados (Por fila) ---
+    @admin.display(description="Prioridad")  # Opción moderna para Django
     def prioridad_fuzzy(self, obj):
         dias = 0
         documentos = 0
         revisiones = 0
 
-        if hasattr(obj, 'formato1_data'):
+        if hasattr(obj, "formato1_data"):
             documentos = 0 if not obj.formato1_data else 1
 
-        revisiones = obj.evaluaciones_set.count() if hasattr(obj, 'evaluaciones_set') else 0
+        revisiones = (
+            obj.evaluaciones_set.count()
+            if hasattr(obj, "evaluaciones_set")
+            else 0
+        )
 
-        if obj.calendario_registro:
-            try:
-                dias = max(0, 30 - int(obj.calendario_registro[-1]))
-            except (TypeError, ValueError):
-                dias = 0
+        if obj.calendario_registro != "2026B":
+            dias = 0
+        else:
+            dias = 25
 
-        prioridad, etiqueta = calcular_prioridad_proyecto(dias, documentos, revisiones)
+        prioridad, etiqueta = calcular_prioridad_proyecto(
+            dias, documentos, revisiones
+        )
         color = {
-            'BAJA': '#2e7d32',
-            'MEDIA': '#f9a825',
-            'ALTA': '#ef6c00',
-            'URGENTE': '#c62828',
-        }.get(etiqueta, '#546e7a')
+            "BAJA": "#2e7d32",
+            "MEDIA": "#f9a825",
+            "ALTA": "#ef6c00",
+            "URGENTE": "#c62828",
+        }.get(etiqueta, "#546e7a")
+
         return format_html(
             '<span style="display:inline-block; padding:4px 8px; border-radius:999px; '
             'font-weight:600; color:white; background:{}; min-width:90px; text-align:center;">'
-            '{:.0f} - {}'
-            '</span>',
+            "{} - {}"
+            "</span>",
             color,
-            prioridad,
+            int(round(prioridad)),
             etiqueta,
         )
-    prioridad_fuzzy.short_description = 'Prioridad'
-
+    
     def boton_enviar_correo(self, obj):
         return format_html(
             '<a class="button" href="enviar-correo/{}/" '

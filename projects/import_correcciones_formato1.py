@@ -111,6 +111,5 @@ def importar_correcciones_formato1():
         if cambios_realizados:
             formato.save()
             count += 1
-        # No marcamos error si no hubo cambios, significa que el alumno subió lo mismo
 
     return count, errores

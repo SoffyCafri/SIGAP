@@ -1,10 +1,12 @@
 import numpy as np
 import skfuzzy as fuzz
+from skfuzzy.defuzzify.exceptions import EmptyMembershipError
 
 
-def calcular_prioridad_proyecto(dias_fecha_limite, documentos_pendientes, revisiones_realizadas):
-    """
-    Calcula la prioridad de un proyecto mediante un Sistema de Inferencia Difusa Mamdani.
+def calcular_prioridad_proyecto(
+    dias_fecha_limite, documentos_pendientes, revisiones_realizadas
+):
+    """Calcula la prioridad de un proyecto mediante un Sistema de Inferencia Difusa Mamdani.
 
     Entradas:
       - dias_fecha_limite: rango 0 a 30 días
@@ -41,19 +43,37 @@ def calcular_prioridad_proyecto(dias_fecha_limite, documentos_pendientes, revisi
     prioridad_alta = fuzz.trimf(universo_prioridad, [50, 70, 90])
     prioridad_urgente = fuzz.trapmf(universo_prioridad, [70, 85, 100, 100])
 
-    dias_critico_val = fuzz.interp_membership(universo_dias, dias_critico, dias)
+    dias_critico_val = fuzz.interp_membership(
+        universo_dias, dias_critico, dias
+    )
     dias_medio_val = fuzz.interp_membership(universo_dias, dias_medio, dias)
-    dias_urgente_val = fuzz.interp_membership(universo_dias, dias_urgente, dias)
+    dias_urgente_val = fuzz.interp_membership(
+        universo_dias, dias_urgente, dias
+    )
 
-    docs_ninguno_val = fuzz.interp_membership(universo_documentos, docs_ninguno, documentos)
-    docs_pocos_val = fuzz.interp_membership(universo_documentos, docs_pocos, documentos)
-    docs_muchos_val = fuzz.interp_membership(universo_documentos, docs_muchos, documentos)
+    docs_ninguno_val = fuzz.interp_membership(
+        universo_documentos, docs_ninguno, documentos
+    )
+    docs_pocos_val = fuzz.interp_membership(
+        universo_documentos, docs_pocos, documentos
+    )
+    docs_muchos_val = fuzz.interp_membership(
+        universo_documentos, docs_muchos, documentos
+    )
 
-    revis_ninguna_val = fuzz.interp_membership(universo_revisiones, revis_ninguna, revisiones)
-    revis_pocas_val = fuzz.interp_membership(universo_revisiones, revis_pocas, revisiones)
-    revis_muchas_val = fuzz.interp_membership(universo_revisiones, revis_muchas, revisiones)
+    revis_ninguna_val = fuzz.interp_membership(
+        universo_revisiones, revis_ninguna, revisiones
+    )
+    revis_pocas_val = fuzz.interp_membership(
+        universo_revisiones, revis_pocas, revisiones
+    )
+    revis_muchas_val = fuzz.interp_membership(
+        universo_revisiones, revis_muchas, revisiones
+    )
 
-    reg1 = np.fmin(np.fmin(dias_critico_val, docs_ninguno_val), revis_ninguna_val)
+    reg1 = np.fmin(
+        np.fmin(dias_critico_val, docs_ninguno_val), revis_ninguna_val
+    )
     reg2 = np.fmin(np.fmin(dias_critico_val, docs_pocos_val), revis_pocas_val)
     reg3 = np.fmin(np.fmin(dias_medio_val, docs_pocos_val), revis_pocas_val)
     reg4 = np.fmin(np.fmin(dias_urgente_val, docs_muchos_val), revis_muchas_val)
@@ -71,16 +91,22 @@ def calcular_prioridad_proyecto(dias_fecha_limite, documentos_pendientes, revisi
     for cons in (cons1, cons2, cons3, cons4, cons5, cons6):
         agregado = np.maximum(agregado, cons)
 
-    puntaje = fuzz.defuzz(universo_prioridad, agregado, 'centroid')
-    puntaje = float(np.clip(puntaje, 0, 100))
+    # Intento de defuzzificación
+    try:
+        puntaje = fuzz.defuzz(universo_prioridad, agregado, "centroid")
+        puntaje = float(np.clip(puntaje, 0, 100))
+    except EmptyMembershipError:
+        # Si ninguna regla se activa, se asigna 0.0 por defecto
+        puntaje = 0.0
 
+    # Clasificación de etiqueta
     if puntaje < 25:
-        etiqueta = 'BAJA'
+        etiqueta = "BAJA"
     elif puntaje < 50:
-        etiqueta = 'MEDIA'
+        etiqueta = "MEDIA"
     elif puntaje < 75:
-        etiqueta = 'ALTA'
+        etiqueta = "ALTA"
     else:
-        etiqueta = 'URGENTE'
+        etiqueta = "URGENTE"
 
-    return puntaje, etiqueta
+    return round(puntaje, 2), etiqueta
