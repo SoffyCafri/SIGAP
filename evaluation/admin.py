@@ -43,7 +43,8 @@ class EvaluacionesAdmin(admin.ModelAdmin):
         # Filtramos para no reprocesar lo que ya tiene ese estado (Evita Spam)
         evaluaciones_a_procesar = queryset.exclude(resolutivo=nuevo_estado)
         
-        count = 0
+        actualizadas = 0
+        correos_preparados = 0
         correos_para_enviar = []
 
         # Abrimos UNA SOLA conexión para todo el lote
@@ -53,6 +54,7 @@ class EvaluacionesAdmin(admin.ModelAdmin):
                 # 1. Actualizamos y Guardamos (Dispara lógica de models.py y 3-strikes)
                 evaluacion.resolutivo = nuevo_estado
                 evaluacion.save() 
+                actualizadas += 1
                 
                 # 2. Obtenemos datos del destinatario
                 rep = evaluacion.proyecto.participacion_set.filter(es_representante=True).first()
@@ -64,11 +66,16 @@ class EvaluacionesAdmin(admin.ModelAdmin):
 
                     # 3. Lógica de Contenido según el Estado
                     if nuevo_estado == 'APROBADO':
-                        subject = f"🎉 ¡Felicidades! Proyecto APROBADO: {folio}"
+                        if evaluacion.tipo_revision == "FINAL":
+                            subject = f"🎉 ¡Felicidades! Proyecto APROBADO: {folio}"
+                            resultado = "el dictamen final es: APROBADO"
+                        else:
+                            subject = f"Revisión aprobada - Proyecto: {folio}"
+                            resultado = "la revisión fue aprobada"
                         body = (
                             f"Estimado alumno,\n\n"
                             f"Nos complace informarle que su proyecto con folio {folio} "
-                            f"ha sido revisado y el dictamen es: APROBADO.\n\n"
+                            f"ha sido revisado y {resultado}.\n\n"
                             f"¡Excelente trabajo!"
                         )
 
@@ -109,13 +116,17 @@ class EvaluacionesAdmin(admin.ModelAdmin):
                             connection=connection # Usamos la conexión compartida
                         )
                         correos_para_enviar.append(email)
-                        count += 1
+                        correos_preparados += 1
             
             # 5. Enviamos todo el paquete de una vez
             if correos_para_enviar:
                 connection.send_messages(correos_para_enviar)
 
-        self.message_user(request, f"✔ Se procesaron {count} evaluaciones al estado {nuevo_estado} y se enviaron sus notificaciones.")
+        self.message_user(
+            request,
+            f"✔ Se actualizaron {actualizadas} evaluaciones al estado {nuevo_estado}; "
+            f"se prepararon {correos_preparados} notificaciones.",
+        )
 
     # =================================================================
     # ACCIONES (Botones visibles en el Admin)
@@ -158,7 +169,11 @@ class EvaluacionesAdmin(admin.ModelAdmin):
         obj.proyecto.refresh_from_db()
 
         # Lógica de envío individual (Mantenemos esto para ediciones manuales rápidas)
-        if obj.resolutivo == "APROBADO" and resolutivo_anterior != "APROBADO":
+        if (
+            obj.resolutivo == "APROBADO"
+            and obj.tipo_revision == "FINAL"
+            and resolutivo_anterior != "APROBADO"
+        ):
             rep = obj.proyecto.participacion_set.filter(es_representante=True).first()
             if rep and rep.alumno.correo_electronico:
                 send_mail(

@@ -1,6 +1,8 @@
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
 from django.utils.timezone import make_aware
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from datetime import datetime
 
 from projects.models import Proyecto
@@ -75,16 +77,20 @@ def importar_evaluaciones_forms():
         # ================= A. FOLIO =================
         folio_col = headers_normalizados.get("INGRESA EL FOLIO DE TU PROYECTO ASIGNADO")
         if not folio_col: 
-            # Si no existe la columna, es un error grave de estructura del Excel
+            errores.append(
+                "La hoja no contiene la columna 'INGRESA EL FOLIO DE TU PROYECTO ASIGNADO'."
+            )
             continue 
 
         folio = data.get(folio_col)
         if not folio:
-            # Si la fila no tiene folio, la ignoramos sin error (fila vacía)
+            continue
+        folio = str(folio).strip()
+        if not folio:
             continue
 
         try:
-            proyecto = Proyecto.objects.get(folio=folio.strip())
+            proyecto = Proyecto.objects.get(folio=folio)
         except Proyecto.DoesNotExist:
             errores.append(f"Fila {num_fila_excel}: Folio '{folio}' no encontrado en el sistema.")
             continue
@@ -133,7 +139,12 @@ def importar_evaluaciones_forms():
             "FORMA": "FORMA",
             "NO APLICA": "FINAL"
         }
-        tipo_revision = tipo_map.get(tipo_raw, "FORMA")
+        tipo_revision = tipo_map.get(tipo_raw)
+        if tipo_revision is None:
+            errores.append(
+                f"Fila {num_fila_excel}: tipo de revisión desconocido '{tipo_raw}'."
+            )
+            continue
 
         obs_col = headers_normalizados.get("OBSERVACIONES")
         observaciones = data.get(obs_col, "")
@@ -141,13 +152,21 @@ def importar_evaluaciones_forms():
         fecha_col = headers_normalizados.get("MARCA TEMPORAL")
         fecha_str = data.get(fecha_col)
 
-        if fecha_str:
-            try:
-                fecha = make_aware(datetime.strptime(fecha_str, "%d/%m/%Y %H:%M:%S"))
-            except:
-                fecha = make_aware(datetime.now())
-        else:
-            fecha = make_aware(datetime.now())
+        if not fecha_col or not fecha_str:
+            errores.append(
+                f"Fila {num_fila_excel}: falta la marca temporal de la evaluación."
+            )
+            continue
+
+        try:
+            fecha = make_aware(
+                datetime.strptime(str(fecha_str).strip(), "%d/%m/%Y %H:%M:%S")
+            )
+        except (TypeError, ValueError):
+            errores.append(
+                f"Fila {num_fila_excel}: marca temporal inválida '{fecha_str}'."
+            )
+            continue
 
         
         # ================= D. DUPLICADOS Y GUARDADO =================
@@ -158,18 +177,21 @@ def importar_evaluaciones_forms():
         ).exists():
             continue
 
-        # Guardamos usando el objeto evaluador que encontramos arriba
-        Evaluaciones.objects.create(
-            proyecto=proyecto,
-            evaluador=evaluador_obj,
-            tipo_revision=tipo_revision,
-            
-            # CAMBIO CLAVE: Entra como NO_APLICA (Zona de espera)
-            resolutivo="NO_APLICA", 
-            
-            observaciones=observaciones,
-            fecha_evaluacion=fecha
-        )
+        try:
+            with transaction.atomic():
+                Evaluaciones.objects.create(
+                    proyecto=proyecto,
+                    evaluador=evaluador_obj,
+                    tipo_revision=tipo_revision,
+                    resolutivo="NO_APLICA",
+                    observaciones=observaciones,
+                    fecha_evaluacion=fecha,
+                )
+        except (IntegrityError, ValidationError, ValueError) as error:
+            errores.append(
+                f"Fila {num_fila_excel}: no se pudo guardar la evaluación: {error}."
+            )
+            continue
 
         count += 1
 

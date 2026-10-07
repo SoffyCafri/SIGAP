@@ -1,8 +1,36 @@
 # evaluations/models.py
 
-from django.db import models
+from django.core.exceptions import ValidationError
+from django.db import models, transaction
+from django.db.models import Max
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from projects.models import Proyecto
 from people.models import Evaluador
+
+
+RESOLUTIVOS_QUE_CONSUMEN_INTENTO = ("APROBADO", "PENDIENTE", "RECHAZADO")
+
+
+def recalcular_dictamen(proyecto_id):
+    evaluaciones = Evaluaciones.objects.filter(proyecto_id=proyecto_id)
+
+    tiene_aprobacion_final = evaluaciones.filter(
+        tipo_revision="FINAL",
+        resolutivo="APROBADO",
+    ).exists()
+    intentos_resueltos = evaluaciones.filter(
+        resolutivo__in=RESOLUTIVOS_QUE_CONSUMEN_INTENTO,
+    ).count()
+
+    if tiene_aprobacion_final:
+        dictamen = "APROBADO"
+    elif intentos_resueltos >= 3:
+        dictamen = "NO APROBADO"
+    else:
+        dictamen = "PENDIENTE"
+
+    Proyecto.objects.filter(pk=proyecto_id).update(dictamen=dictamen)
 
 
 class Evaluaciones(models.Model):
@@ -63,48 +91,61 @@ class Evaluaciones(models.Model):
         verbose_name = "Evaluación Histórica"
         verbose_name_plural = "Evaluaciones Históricas"
         ordering = ['-fecha_evaluacion']
+        constraints = [
+            models.UniqueConstraint(
+                fields=("proyecto", "no_revision"),
+                name="evaluacion_proyecto_no_revision_unica",
+            ),
+        ]
 
     def save(self, *args, **kwargs):
-        # 1. LÓGICA DE MAYÚSCULAS Y CONTEO
-        is_new = self.pk is None 
-        
-        if is_new:
-            conteo_previo = Evaluaciones.objects.filter(proyecto=self.proyecto).count()
-            self.no_revision = conteo_previo + 1
+        es_nueva = self.pk is None
 
-        for field in self._meta.fields:
-            if isinstance(field, (models.CharField, models.TextField)):
-                valor = getattr(self, field.name)
-                if isinstance(valor, str):
-                    setattr(self, field.name, valor.upper())
+        with transaction.atomic():
+            proyecto = self.proyecto
+            if es_nueva:
+                proyecto = proyecto.__class__.objects.select_for_update().get(
+                    pk=self.proyecto_id
+                )
+            else:
+                proyecto = proyecto.__class__.objects.select_for_update().get(
+                    pk=self.proyecto_id
+                )
 
-        # 2. GUARDAR EVALUACIÓN
-        super().save(*args, **kwargs)
+            intentos_previos = Evaluaciones.objects.filter(
+                proyecto_id=self.proyecto_id,
+                resolutivo__in=RESOLUTIVOS_QUE_CONSUMEN_INTENTO,
+            ).exclude(pk=self.pk).count()
+            consume_intento = self.resolutivo in RESOLUTIVOS_QUE_CONSUMEN_INTENTO
 
-        # 3. LÓGICA DE ACTUALIZACIÓN DEL PROYECTO
-        # FILTRO DE SEGURIDAD:
-        # Si la evaluación sigue en "NO_APLICA", ignoramos todo. 
-        # No aprobamos ni reprobamos el proyecto todavía.
-        if self.resolutivo == "NO_APLICA":
-            return  
+            if consume_intento and intentos_previos >= 3:
+                raise ValidationError(
+                    "El proyecto ya alcanzó el límite de tres evaluaciones resueltas."
+                )
 
-        proyecto = self.proyecto
-        hubo_cambios = False 
+            if es_nueva:
+                ultimo_numero = Evaluaciones.objects.filter(
+                    proyecto_id=self.proyecto_id,
+                ).aggregate(maximo=Max("no_revision"))["maximo"] or 0
+                self.no_revision = ultimo_numero + 1
 
-        total_evaluaciones = Evaluaciones.objects.filter(proyecto=proyecto).count()
+            for field in self._meta.fields:
+                if isinstance(field, (models.CharField, models.TextField)):
+                    valor = getattr(self, field.name)
+                    if isinstance(valor, str):
+                        setattr(self, field.name, valor.upper())
 
-        # --- CASO A: APROBADO ---
-        if self.resolutivo == 'APROBADO':
-            if proyecto.dictamen != 'APROBADO':
-                proyecto.dictamen = 'APROBADO'
-                hubo_cambios = True
+            super().save(*args, **kwargs)
+            recalcular_dictamen(self.proyecto_id)
 
-        # --- CASO B: GAME OVER (3 INTENTOS FALLIDOS) ---
-        # Como ya filtramos el "NO_APLICA" arriba, aquí solo entra PENDIENTE o RECHAZADO
-        elif total_evaluaciones >= 3 and self.resolutivo != 'APROBADO':
-            if proyecto.dictamen != 'NO APROBADO': 
-                proyecto.dictamen = 'NO APROBADO'
-                hubo_cambios = True
+    def delete(self, *args, **kwargs):
+        proyecto_id = self.proyecto_id
+        with transaction.atomic():
+            resultado = super().delete(*args, **kwargs)
+            recalcular_dictamen(proyecto_id)
+        return resultado
 
-        if hubo_cambios:
-            proyecto.save()
+
+@receiver(post_delete, sender=Evaluaciones)
+def recalcular_dictamen_despues_de_eliminar(sender, instance, **kwargs):
+    recalcular_dictamen(instance.proyecto_id)

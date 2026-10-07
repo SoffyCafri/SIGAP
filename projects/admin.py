@@ -114,8 +114,7 @@ class ProyectoAdmin(admin.ModelAdmin):
         documentos = 0
         revisiones = 0
 
-        if hasattr(obj, "formato1_data"):
-            documentos = 0 if not obj.formato1_data else 1
+        documentos = 0 if hasattr(obj, "formato1_data") else 1
 
         revisiones = (
             obj.evaluaciones_set.count()

@@ -2,6 +2,7 @@ from django.core.management.base import BaseCommand
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
 from django.utils.timezone import make_aware
+from django.db import transaction
 from datetime import datetime
 import re
 
@@ -13,7 +14,7 @@ from projects.models import Proyecto, Formato1, Participacion
 # ============================
 
 SPREADSHEET_ID = "17l-rBcNI95twCxpgWAS6ZW2-s9mNet_-MTG29eNxPfk"
-RANGE_NAME = "Respuestas de formulario 1!A:ZZ"
+RANGE_NAME = "'Respuestas de formulario 1'!A:ZZ"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
 # ============================
@@ -25,7 +26,7 @@ def normalizar(texto):
     return texto.strip().upper()
 
 def codigo_valido(codigo):
-    return bool(re.fullmatch(r"\d{9}", str(codigo)))
+    return bool(re.fullmatch(r"\d{9}", str(codigo).strip()))
 
 def obtener_calendario(fecha):
     return "A" if fecha.month <= 6 else "B"
@@ -103,6 +104,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(f"✔ Importación finalizada. {count} proyectos procesados."))
 
+    @transaction.atomic
     def procesar_registro(self, data, num_fila, variante_raw, evidencia_texto_raw):
         # 1. FECHA
         try:
@@ -126,6 +128,7 @@ class Command(BaseCommand):
             if not nombre or not codigo:
                 if es_rep: return False 
                 continue
+            codigo = str(codigo).strip()
             if not codigo_valido(codigo): return False
 
             alumno, _ = Alumno.objects.get_or_create(
@@ -135,8 +138,15 @@ class Command(BaseCommand):
                     "correo_electronico": correo if es_rep else None
                 }
             )
+            cambios_alumno = False
+            nombre_normalizado = normalizar(nombre)
+            if alumno.nombre_completo != nombre_normalizado:
+                alumno.nombre_completo = nombre_normalizado
+                cambios_alumno = True
             if es_rep and correo and alumno.correo_electronico != correo:
                 alumno.correo_electronico = correo
+                cambios_alumno = True
+            if cambios_alumno:
                 alumno.save()
             alumnos.append((alumno, es_rep))
 
@@ -155,6 +165,20 @@ class Command(BaseCommand):
                     "correo_electronico": data.get("Correo institucional del asesor(a)")
                 }
             )
+            datos_asesor = {
+                "nombre_completo": normalizar(data.get("Nombre del asesor")),
+                "correo_electronico": data.get("Correo institucional del asesor(a)"),
+            }
+            cambios_asesor = any(
+                getattr(asesor, campo) != valor
+                for campo, valor in datos_asesor.items()
+                if valor
+            )
+            if cambios_asesor:
+                for campo, valor in datos_asesor.items():
+                    if valor:
+                        setattr(asesor, campo, valor)
+                asesor.save()
 
         # 4. PROYECTO
         folio = f"{representante.codigo_estudiante}-{anio}{calendario}"
@@ -191,7 +215,16 @@ class Command(BaseCommand):
             )
         
         # 6. PARTICIPACIONES
+        alumnos_ids = [alumno_obj.pk for alumno_obj, _ in alumnos]
+        Participacion.objects.filter(proyecto=proyecto).exclude(
+            alumno_id__in=alumnos_ids
+        ).delete()
+
         for alumno_obj, es_rep in alumnos:
-            Participacion.objects.get_or_create(proyecto=proyecto, alumno=alumno_obj, defaults={"es_representante": es_rep})
+            Participacion.objects.update_or_create(
+                proyecto=proyecto,
+                alumno=alumno_obj,
+                defaults={"es_representante": es_rep},
+            )
             
         return True

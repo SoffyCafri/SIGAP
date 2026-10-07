@@ -91,13 +91,21 @@ def calcular_prioridad_proyecto(
     for cons in (cons1, cons2, cons3, cons4, cons5, cons6):
         agregado = np.maximum(agregado, cons)
 
-    # Intento de defuzzificación
-    try:
-        puntaje = fuzz.defuzz(universo_prioridad, agregado, "centroid")
-        puntaje = float(np.clip(puntaje, 0, 100))
-    except EmptyMembershipError:
-        # Si ninguna regla se activa, se asigna 0.0 por defecto
-        puntaje = 0.0
+    if np.max(agregado) == 0:
+        if dias_urgente_val > 0:
+            puntaje = 85.0
+        elif dias_critico_val > 0:
+            puntaje = 65.0
+        elif docs_muchos_val > 0 or revis_muchas_val > 0:
+            puntaje = 55.0
+        else:
+            puntaje = 0.0
+    else:
+        try:
+            puntaje = fuzz.defuzz(universo_prioridad, agregado, "centroid")
+            puntaje = float(np.clip(puntaje, 0, 100))
+        except EmptyMembershipError:
+            puntaje = 0.0
 
     # Clasificación de etiqueta
     if puntaje < 25:

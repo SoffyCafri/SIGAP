@@ -1,6 +1,7 @@
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
 from django.conf import settings
+from django.db import transaction
 from projects.models import Proyecto, Formato1 # Importamos ambos modelos
 import os
 
@@ -55,6 +56,14 @@ def importar_correcciones_formato1():
         "RESUMEN": "resumen"
     }
 
+    columnas_requeridas = {COLUMNA_FOLIO, *MAPEO_CAMPOS}
+    columnas_faltantes = columnas_requeridas.difference(headers)
+    if columnas_faltantes:
+        return 0, [
+            "Faltan columnas obligatorias: "
+            + ", ".join(sorted(columnas_faltantes))
+        ]
+
     for i, row in enumerate(data_rows):
         num_fila = i + 2
         
@@ -73,7 +82,10 @@ def importar_correcciones_formato1():
 
         # --- B. BUSCAR EL PROYECTO ---
         try:
-            proyecto = Proyecto.objects.get(folio=folio.strip())
+            folio = str(folio).strip().upper()
+            if not folio:
+                continue
+            proyecto = Proyecto.objects.get(folio=folio)
         except Proyecto.DoesNotExist:
             errores.append(f"Fila {num_fila}: Folio '{folio}' NO existe en la base de datos.")
             continue
@@ -99,17 +111,20 @@ def importar_correcciones_formato1():
         
         for header_excel, campo_modelo in MAPEO_CAMPOS.items():
             valor_nuevo = data.get(header_excel)
+            if valor_nuevo is None or not str(valor_nuevo).strip():
+                continue
             
             # Pro Tip: Usar .strip() y convertir a string para evitar problemas con None
             val_db = str(getattr(formato, campo_modelo, "") or "").strip()
-            val_excel = str(valor_nuevo).strip()
+            val_excel = normalizar(valor_nuevo)
 
-            if val_db != val_excel:
-                setattr(formato, campo_modelo, valor_nuevo) # Guardamos el valor original del Excel
+            if val_db.upper() != val_excel:
+                setattr(formato, campo_modelo, val_excel)
                 cambios_realizados = True
         
         if cambios_realizados:
-            formato.save()
+            with transaction.atomic():
+                formato.save()
             count += 1
 
     return count, errores
