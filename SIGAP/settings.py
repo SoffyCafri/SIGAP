@@ -28,11 +28,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     # Apps SIGAP
-    'people',
-    'projects',
-    'evaluation',
-    'registration',
-    'integrations',
+    'people.apps.PeopleConfig',
+    'projects.apps.ProjectsConfig',
+    'evaluation.apps.EvaluationConfig',
+    'registration.apps.RegistrationConfig',
+    'integrations.apps.IntegrationsConfig',
 ]
 
 # ==============================
@@ -106,12 +106,25 @@ AUTH_PASSWORD_VALIDATORS = [
 # ==============================
 # INTERNATIONALIZATION
 # ==============================
-LANGUAGE_CODE = 'es-mx'
+LANGUAGE_CODE = 'es'
 
 TIME_ZONE = 'America/Mexico_City'
 
 USE_I18N = True
 USE_TZ = True
+
+# ==============================
+# ADMINISTRACIÓN (JAZZMIN)
+# ==============================
+JAZZMIN_SETTINGS = {
+    'site_title': 'SIGAP | Administración',
+    'site_header': 'Panel administrativo SIGAP',
+    'site_brand': 'SIGAP',
+    'welcome_sign': 'Bienvenido al panel administrativo de SIGAP',
+    'copyright': 'SIGAP',
+    'show_sidebar': True,
+    'navigation_expanded': True,
+}
 
 # ==============================
 # STATIC FILES

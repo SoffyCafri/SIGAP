@@ -11,8 +11,8 @@ from .models import Evaluaciones
 from .import_evaluaciones_forms import importar_evaluaciones_forms
 
 
-admin.site.site_header = "Panel Administrativo QFB"
-admin.site.site_title = "QFB | Administración"
+admin.site.site_header = "Panel administrativo SIGAP"
+admin.site.site_title = "SIGAP | Administración"
 admin.site.index_title = "Gestión de Proyectos Modulares"
 admin.site.site_url = None
 

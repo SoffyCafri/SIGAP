@@ -154,7 +154,7 @@ class ProyectoAdmin(admin.ModelAdmin):
             'border-radius:6px; text-decoration:none;">📨 Enviar correo</a>',
             obj.pk
         )
-    boton_enviar_correo.short_description = "Acción"
+    boton_enviar_correo.short_description = "Enviar correo"
 
     def boton_enviar_correo_evaluador(self, obj):
         return format_html(
@@ -163,7 +163,7 @@ class ProyectoAdmin(admin.ModelAdmin):
             'border-radius:6px; text-decoration:none;">📧 Enviar a Evaluador</a>',
             obj.pk
         )
-    boton_enviar_correo_evaluador.short_description = "Correo Evaluador"
+    boton_enviar_correo_evaluador.short_description = "Enviar al evaluador"
 
     # ---------------------------------------------------------------
     # 🟠 CONFIGURACIÓN DE URLS (Para que funcionen los botones naranjas)
