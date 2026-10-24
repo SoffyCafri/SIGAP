@@ -2,8 +2,9 @@
 
 {% block object-tools %}
 <div class="object-tools">
-    <a href="{% url 'admin:importar_evaluaciones_forms' %}" class="button">
-        📥 Importar evaluaciones desde Google Forms
+    <a href="{% url 'admin:importar_evaluaciones_forms' %}" class="btn btn-primary project-import-link">
+        <i class="fas fa-file-import mr-1" aria-hidden="true"></i>
+        Importar evaluaciones desde Google Forms
     </a>
 </div>
 {{ block.super }}

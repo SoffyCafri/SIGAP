@@ -149,18 +149,20 @@ class ProyectoAdmin(admin.ModelAdmin):
     
     def boton_enviar_correo(self, obj):
         return format_html(
-            '<a class="button" href="enviar-correo/{}/" '
-            'style="padding:5px 10px; background:#0b6efd; color:white; '
-            'border-radius:6px; text-decoration:none;">📨 Enviar correo</a>',
+            '<a class="btn btn-primary project-action-link" '
+            'href="enviar-correo/{}/" title="Enviar correo al representante">'
+            '<i class="fas fa-envelope mr-1" aria-hidden="true"></i>'
+            'Enviar correo</a>',
             obj.pk
         )
     boton_enviar_correo.short_description = "Enviar correo"
 
     def boton_enviar_correo_evaluador(self, obj):
         return format_html(
-            '<a class="button" href="enviar-correo-evaluador/{}/" '
-            'style="padding:5px 10px; background:#198754; color:white; '
-            'border-radius:6px; text-decoration:none;">📧 Enviar a Evaluador</a>',
+            '<a class="btn btn-success project-action-link" '
+            'href="enviar-correo-evaluador/{}/" title="Enviar correo al evaluador">'
+            '<i class="fas fa-user-check mr-1" aria-hidden="true"></i>'
+            'Enviar a evaluador</a>',
             obj.pk
         )
     boton_enviar_correo_evaluador.short_description = "Enviar al evaluador"

@@ -124,6 +124,7 @@ JAZZMIN_SETTINGS = {
     'copyright': 'SIGAP',
     'show_sidebar': True,
     'navigation_expanded': True,
+    'custom_css': 'projects/css/admin.css',
 }
 
 # ==============================

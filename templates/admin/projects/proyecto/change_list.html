@@ -2,17 +2,19 @@
 {% load i18n %}
 
 {% block object-tools %}
-    <ul class="object-tools">
+    <ul class="object-tools project-object-tools">
         
         <li>
-            <a href="{% url 'admin:importar_forms_admin' %}" class="addlink" style="background-color: #fd7e14; color: white;">
-                📥 Importar registro desde Google Forms
+            <a href="{% url 'admin:importar_forms_admin' %}" class="btn btn-primary project-import-link">
+                <i class="fas fa-file-import mr-1" aria-hidden="true"></i>
+                Importar registro desde Google Forms
             </a>
         </li>
 
         <li>
-            <a href="importar-correcciones/" class="addlink" style="background-color: #e67e22; color: white;">
-                📝 Importar correcciones (Formato 1)
+            <a href="importar-correcciones/" class="btn btn-warning project-import-link">
+                <i class="fas fa-clipboard-check mr-1" aria-hidden="true"></i>
+                Importar correcciones (Formato 1)
             </a>
         </li>
 
