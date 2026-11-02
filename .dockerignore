@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+**/__pycache__
+**/*.py[cod]
+*.json
+**/*.json
+staticfiles
+postgres_data
+venv
+.venv
+Dockerfile
+docker-compose*.yml

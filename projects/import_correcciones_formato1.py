@@ -1,29 +1,19 @@
-from googleapiclient.discovery import build
-from google.oauth2.service_account import Credentials
-from django.conf import settings
 from django.db import transaction
 from projects.models import Proyecto, Formato1 # Importamos ambos modelos
-import os
+from integrations.google_sheets import get_sheets_service
 
 # ================= CONFIGURACIÓN =================
 SPREADSHEET_ID = "1hQseBivdPwLe9roXOxjmRbscUNriAvj5Fydih8jSHKs" 
 # Usamos A:Z para asegurar que lea todas las columnas aunque agregues más
 RANGE_NAME = "'Respuestas de formulario 1'!A:Z" 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-RUTA_CREDENCIALES = os.path.join(settings.BASE_DIR, "google_service_account.json.json")
-
 def normalizar(texto):
     return texto.strip().upper() if texto else ""
 
 def importar_correcciones_formato1():
     print("--- INICIANDO IMPORTACIÓN DE CORRECCIONES ---")
 
-    if not os.path.exists(RUTA_CREDENCIALES):
-        raise FileNotFoundError(f"❌ No se encontró el archivo de credenciales.")
-    
     try:
-        creds = Credentials.from_service_account_file(RUTA_CREDENCIALES, scopes=SCOPES)
-        service = build("sheets", "v4", credentials=creds)
+        service = get_sheets_service()
         sheet = service.spreadsheets()
         result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME).execute()
     except Exception as e:

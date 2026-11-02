@@ -1,5 +1,3 @@
-from googleapiclient.discovery import build
-from google.oauth2.service_account import Credentials
 from django.utils.timezone import make_aware
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -7,22 +5,12 @@ from datetime import datetime
 
 from projects.models import Proyecto
 from evaluation.models import Evaluaciones
-from django.conf import settings
 from people.models import Evaluador 
-import os
+from integrations.google_sheets import get_sheets_service
 
 # ================= GOOGLE SHEETS CONFIG =================
 SPREADSHEET_ID = "1LJKWlgLL9qi1a8C_KoiEB65ZCJiW2mxze0Aj5Sa_K7c"
 RANGE_NAME = "Respuestas de formulario 1!A:Z"
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-
-# Ajusta el nombre si tu archivo tiene doble .json o no
-RUTA_CREDENCIALES = os.path.join(
-    settings.BASE_DIR,
-    "google_service_account.json.json" 
-)
-
-
 # ================= UTILIDADES =================
 def normalizar(texto):
     return texto.strip().upper() if texto else ""
@@ -30,16 +18,7 @@ def normalizar(texto):
 
 # ================= IMPORTADOR PRINCIPAL =================
 def importar_evaluaciones_forms():
-    # 1. Validación de Archivo de Credenciales
-    if not os.path.exists(RUTA_CREDENCIALES):
-        raise FileNotFoundError(f"❌ CRÍTICO: No se encontró el archivo de credenciales en: {RUTA_CREDENCIALES}")
-    
-    try:
-        creds = Credentials.from_service_account_file(RUTA_CREDENCIALES, scopes=SCOPES)
-    except Exception as e:
-        raise Exception(f"El archivo existe pero las credenciales son inválidas: {e}")
-    
-    service = build("sheets", "v4", credentials=creds)
+    service = get_sheets_service()
     sheet = service.spreadsheets()
 
     # 2. Conexión a Google Sheets

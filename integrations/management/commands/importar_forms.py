@@ -1,6 +1,4 @@
 from django.core.management.base import BaseCommand
-from googleapiclient.discovery import build
-from google.oauth2.service_account import Credentials
 from django.utils import timezone
 from django.db import transaction
 from datetime import datetime
@@ -8,6 +6,7 @@ import re
 
 from people.models import Alumno, Asesor
 from projects.models import Proyecto, Formato1, Participacion
+from integrations.google_sheets import get_sheets_service
 
 # ============================
 # CONFIG GOOGLE SHEETS
@@ -15,7 +14,6 @@ from projects.models import Proyecto, Formato1, Participacion
 
 SPREADSHEET_ID = "17l-rBcNI95twCxpgWAS6ZW2-s9mNet_-MTG29eNxPfk"
 RANGE_NAME = "'Respuestas de formulario 1'!A:ZZ"
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
 # ============================
 # UTILIDADES
@@ -61,15 +59,12 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.stdout.write("🔵 Iniciando conexión con Google Sheets...")
-        RUTA_CREDENCIALES = "/app/SIGAP/credentials/google_service_account.json"
-        
         try:
-            creds = Credentials.from_service_account_file(RUTA_CREDENCIALES, scopes=SCOPES)
+            service = get_sheets_service()
         except FileNotFoundError:
             self.stdout.write(self.style.ERROR(f"❌ No se encontró el archivo de credenciales"))
             return
 
-        service = build("sheets", "v4", credentials=creds)
         sheet = service.spreadsheets()
 
         try:
