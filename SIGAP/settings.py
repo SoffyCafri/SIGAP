@@ -1,4 +1,5 @@
 from pathlib import Path
+import dj_database_url
 import os
 
 
@@ -89,7 +90,7 @@ WSGI_APPLICATION = 'SIGAP.wsgi.application'
 # ==============================
 # DATABASE (PostgreSQL - Docker)
 # ==============================
-DATABASES = {
+"""DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.getenv('DB_NAME', 'sigap'),
@@ -98,6 +99,16 @@ DATABASES = {
         'HOST': os.getenv('DB_HOST', 'db'),
         'PORT': os.getenv('DB_PORT', '5432'),
     }
+}"""
+DATABASES = {
+    'default': dj_database_url.config(
+        default=os.getenv(
+            'DATABASE_URL',
+            f"postgres://{os.getenv('DB_USER', 'sigap')}:{os.getenv('DB_PASSWORD', '')}@{os.getenv('DB_HOST', 'db')}:{os.getenv('DB_PORT', '5432')}/{os.getenv('DB_NAME', 'sigap')}"
+        ),
+        conn_max_age=600,
+        ssl_require=not DEBUG  # SSL automático en producción
+    )
 }
 
 # ==============================
