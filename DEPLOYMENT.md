@@ -14,9 +14,8 @@ independiente.
    deben ser leídas por los importadores.
 
 La cuenta de servicio se monta como un secreto Docker en
-`/run/secrets/google_service_account.json`. La variable
-`GOOGLE_APPLICATION_CREDENTIALS` permite cambiar esa ubicación sin modificar
-el código.
+`/app/credentials/google-sheets.json`. Esta es la única ruta que utiliza la
+aplicación, tanto localmente como dentro del contenedor.
 
 ## Arranque
 
