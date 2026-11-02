@@ -10,7 +10,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY . .
-RUN mkdir -p /app/staticfiles /app/credentials \
+RUN mkdir -p /app/staticfiles \
     && chmod +x /app/entrypoint.sh \
     && useradd --create-home --shell /usr/sbin/nologin sigap \
     && chown -R sigap:sigap /app
