@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
-from django.utils.timezone import make_aware
+from django.utils import timezone
 from django.db import transaction
 from datetime import datetime
 import re
@@ -109,9 +109,17 @@ class Command(BaseCommand):
         # 1. FECHA
         try:
             fecha_str = data.get("Marca temporal")
-            if not fecha_str: return False
-            fecha = make_aware(datetime.strptime(fecha_str, "%d/%m/%Y %H:%M:%S"))
-        except Exception: return False
+            if fecha_str:
+                fecha = timezone.make_aware(
+                    datetime.strptime(
+                        str(fecha_str).strip(),
+                        "%d/%m/%Y %H:%M:%S",
+                    )
+                )
+            else:
+                fecha = timezone.now()
+        except (TypeError, ValueError):
+            fecha = timezone.now()
 
         calendario = obtener_calendario(fecha)
         anio = fecha.year
@@ -197,6 +205,7 @@ class Command(BaseCommand):
                 "evidencia": normalizar(evidencia_texto_raw), # <--- AQUI GUARDAMOS EL TEXTO
                 "nivel_competencia": normalizar(data.get("Nivel de competencias")),
                 "calendario_registro": f"{anio}{calendario}",
+                "fecha_registro": fecha,
                 "evidencia_url": url_evidencia, # <--- AQUI LA URL
                 "protocolo_dictamen_url": url_protocolo
             }

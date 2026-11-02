@@ -4,35 +4,39 @@ from skfuzzy.defuzzify.exceptions import EmptyMembershipError
 
 
 def calcular_prioridad_proyecto(
-    dias_fecha_limite, documentos_pendientes, revisiones_realizadas
+    dias_transcurridos,
+    documentos_pendientes,
+    revisiones_realizadas,
+    aprobado=False,
 ):
-    """Calcula la prioridad de un proyecto mediante un Sistema de Inferencia Difusa Mamdani.
+    """Calcula la prioridad mediante un sistema de inferencia difusa Mamdani.
 
     Entradas:
-      - dias_fecha_limite: rango 0 a 30 días
-      - documentos_pendientes: rango 0 a 2 documentos
+      - dias_transcurridos: días transcurridos desde el registro, limitado a 30
+      - documentos_pendientes: rango 0 a 3 documentos
       - revisiones_realizadas: rango 0 a 3 revisiones
+      - aprobado: si existe un resolutivo APROBADO, reduce un nivel la prioridad
 
     Retorna:
       (prioridad, etiqueta) donde prioridad está en [0,100] y etiqueta es una de:
       'BAJA', 'MEDIA', 'ALTA', 'URGENTE'
     """
-    dias = float(np.clip(dias_fecha_limite, 0, 30))
-    documentos = float(np.clip(documentos_pendientes, 0, 2))
+    dias = float(np.clip(dias_transcurridos, 0, 30))
+    documentos = float(np.clip(documentos_pendientes, 0, 3))
     revisiones = float(np.clip(revisiones_realizadas, 0, 3))
 
     universo_dias = np.linspace(0, 30, 301)
-    universo_documentos = np.linspace(0, 2, 201)
+    universo_documentos = np.linspace(0, 3, 301)
     universo_revisiones = np.linspace(0, 3, 301)
     universo_prioridad = np.linspace(0, 100, 1001)
 
-    dias_critico = fuzz.trapmf(universo_dias, [0, 0, 5, 10])
+    dias_reciente = fuzz.trapmf(universo_dias, [0, 0, 5, 10])
     dias_medio = fuzz.trimf(universo_dias, [5, 15, 25])
-    dias_urgente = fuzz.trapmf(universo_dias, [20, 25, 30, 30])
+    dias_rezagado = fuzz.trapmf(universo_dias, [20, 25, 30, 30])
 
     docs_ninguno = fuzz.trapmf(universo_documentos, [0, 0, 0.5, 1])
-    docs_pocos = fuzz.trimf(universo_documentos, [0.5, 1, 1.5])
-    docs_muchos = fuzz.trapmf(universo_documentos, [1, 1.5, 2, 2])
+    docs_pocos = fuzz.trimf(universo_documentos, [0.5, 1.5, 2.5])
+    docs_muchos = fuzz.trapmf(universo_documentos, [1.5, 2, 3, 3])
 
     revis_ninguna = fuzz.trapmf(universo_revisiones, [0, 0, 0.5, 1])
     revis_pocas = fuzz.trimf(universo_revisiones, [0.5, 1.5, 2.5])
@@ -43,13 +47,9 @@ def calcular_prioridad_proyecto(
     prioridad_alta = fuzz.trimf(universo_prioridad, [50, 70, 90])
     prioridad_urgente = fuzz.trapmf(universo_prioridad, [70, 85, 100, 100])
 
-    dias_critico_val = fuzz.interp_membership(
-        universo_dias, dias_critico, dias
-    )
+    dias_reciente_val = fuzz.interp_membership(universo_dias, dias_reciente, dias)
     dias_medio_val = fuzz.interp_membership(universo_dias, dias_medio, dias)
-    dias_urgente_val = fuzz.interp_membership(
-        universo_dias, dias_urgente, dias
-    )
+    dias_rezagado_val = fuzz.interp_membership(universo_dias, dias_rezagado, dias)
 
     docs_ninguno_val = fuzz.interp_membership(
         universo_documentos, docs_ninguno, documentos
@@ -71,35 +71,40 @@ def calcular_prioridad_proyecto(
         universo_revisiones, revis_muchas, revisiones
     )
 
-    reg1 = np.fmin(
-        np.fmin(dias_critico_val, docs_ninguno_val), revis_ninguna_val
-    )
-    reg2 = np.fmin(np.fmin(dias_critico_val, docs_pocos_val), revis_pocas_val)
-    reg3 = np.fmin(np.fmin(dias_medio_val, docs_pocos_val), revis_pocas_val)
-    reg4 = np.fmin(np.fmin(dias_urgente_val, docs_muchos_val), revis_muchas_val)
-    reg5 = np.fmin(np.fmin(dias_urgente_val, docs_pocos_val), revis_muchas_val)
-    reg6 = np.fmin(np.fmin(dias_medio_val, docs_muchos_val), revis_pocas_val)
+    grados_dias = (dias_reciente_val, dias_medio_val, dias_rezagado_val)
+    grados_documentos = (docs_ninguno_val, docs_pocos_val, docs_muchos_val)
+    grados_revisiones = (revis_ninguna_val, revis_pocas_val, revis_muchas_val)
+    salidas = (prioridad_baja, prioridad_media, prioridad_alta, prioridad_urgente)
 
-    cons1 = np.fmin(reg1, prioridad_baja)
-    cons2 = np.fmin(reg2, prioridad_media)
-    cons3 = np.fmin(reg3, prioridad_alta)
-    cons4 = np.fmin(reg4, prioridad_urgente)
-    cons5 = np.fmin(reg5, prioridad_urgente)
-    cons6 = np.fmin(reg6, prioridad_alta)
+    # Las 27 combinaciones se generan desde una matriz completa de reglas.
+    niveles = (
+        (0, 0, 1),
+        (1, 1, 2),
+        (2, 2, 3),
+    )
+    if aprobado:
+        niveles = tuple(
+            tuple(max(nivel - 1, 0) for nivel in fila)
+            for fila in niveles
+        )
+
+    consecuencias = []
+    for indice_dias, grado_dias in enumerate(grados_dias):
+        for indice_documentos, grado_documentos in enumerate(grados_documentos):
+            for indice_revisiones, grado_revisiones in enumerate(grados_revisiones):
+                regla = min(grado_dias, grado_documentos, grado_revisiones)
+                nivel = min(
+                    niveles[indice_dias][indice_documentos] + indice_revisiones,
+                    3,
+                )
+                consecuencias.append(np.fmin(regla, salidas[nivel]))
 
     agregado = np.zeros_like(universo_prioridad)
-    for cons in (cons1, cons2, cons3, cons4, cons5, cons6):
+    for cons in consecuencias:
         agregado = np.maximum(agregado, cons)
 
     if np.max(agregado) == 0:
-        if dias_urgente_val > 0:
-            puntaje = 85.0
-        elif dias_critico_val > 0:
-            puntaje = 65.0
-        elif docs_muchos_val > 0 or revis_muchas_val > 0:
-            puntaje = 55.0
-        else:
-            puntaje = 0.0
+        raise ValueError("Las funciones de pertenencia no cubren las entradas.")
     else:
         try:
             puntaje = fuzz.defuzz(universo_prioridad, agregado, "centroid")
@@ -107,7 +112,9 @@ def calcular_prioridad_proyecto(
         except EmptyMembershipError:
             puntaje = 0.0
 
-    # Clasificación de etiqueta
+    if aprobado:
+        puntaje = min(puntaje, 74.99)
+
     if puntaje < 25:
         etiqueta = "BAJA"
     elif puntaje < 50:

@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 # Importar modelos de la app 'people' para las FK
 from people.models import Alumno, Asesor, Evaluador 
 
@@ -50,6 +51,10 @@ class Proyecto(models.Model):
         verbose_name="DICTAMEN FINAL"
     )
     calendario_registro = models.CharField(max_length=10, verbose_name="CALENDARIO")
+    fecha_registro = models.DateTimeField(
+        default=timezone.now,
+        verbose_name="FECHA DE REGISTRO",
+    )
     
     evidencia_url = models.URLField(max_length=500, null=True, blank=True, verbose_name="URL EVIDENCIA PRINCIPAL")
     protocolo_dictamen_url = models.URLField(max_length=500, null=True, blank=True, verbose_name="URL PROTOCOLO DICTAMINADO")

@@ -1,10 +1,12 @@
+from datetime import datetime
 from django import forms
+from django.conf import settings
 from django.contrib import admin, messages
 from django.core.mail import send_mail
 from django.urls import path
 from django.shortcuts import redirect
 from django.utils.html import format_html
-from django.conf import settings
+from django.utils import timezone
 from django.utils.safestring import mark_safe
 
 # Modelos
@@ -107,45 +109,80 @@ class ProyectoAdmin(admin.ModelAdmin):
         EvaluacionesInline
     ]
 
-    # --- Botones personalizados (Por fila) ---
-    @admin.display(description="Prioridad")  # Opción moderna para Django
+    # --- Método auxiliar estático para comprobar ciclos anteriores ---
+    @staticmethod
+    def _es_ciclo_anterior(calendario, fecha_actual):
+        try:
+            anio = int(calendario[:4])
+            periodo = calendario[4:].upper()
+            if periodo not in {"A", "B"}:
+                return False
+            inicio = datetime(anio, 1 if periodo == "A" else 7, 1).date()
+            periodo_actual = "A" if fecha_actual.month <= 6 else "B"
+            inicio_actual = datetime(
+                fecha_actual.year,
+                1 if periodo_actual == "A" else 7,
+                1,
+            ).date()
+        except (AttributeError, TypeError, ValueError):
+            return False
+        return inicio < inicio_actual
+
+    # --- Botón / Columna de Prioridad Difusa ---
+    @admin.display(description="Prioridad")
     def prioridad_fuzzy(self, obj):
-        dias = 0
-        documentos = 0
-        revisiones = 0
+        try:
+            fecha_actual = timezone.localdate()
+            
+            # Cálculo de días (Antigüedad / Rezago)
+            if not obj.fecha_registro:
+                dias = 0
+            else:
+                dias = max(0, min(30, (fecha_actual - obj.fecha_registro.date()).days))
+            
+            # Forzar rezago máximo si pertenece a un ciclo anterior
+            if self._es_ciclo_anterior(obj.calendario_registro, fecha_actual):
+                dias = 30
 
-        documentos = 0 if hasattr(obj, "formato1_data") else 1
+            documentos = sum(
+                (
+                    not hasattr(obj, "formato1_data"),
+                    not obj.evidencia_url,
+                    not obj.protocolo_dictamen_url,
+                )
+            )
+            
+            evaluaciones = obj.evaluaciones_set.filter(
+                resolutivo__in=("APROBADO", "PENDIENTE", "RECHAZADO")
+            )
+            revisiones = evaluaciones.exclude(resolutivo="APROBADO").count()
+            aprobado = evaluaciones.filter(resolutivo="APROBADO").exists()
 
-        revisiones = (
-            obj.evaluaciones_set.count()
-            if hasattr(obj, "evaluaciones_set")
-            else 0
-        )
+            # Llamada al motor difuso Mamdani
+            prioridad, etiqueta = calcular_prioridad_proyecto(
+                dias, documentos, revisiones, aprobado=aprobado
+            )
+            
+            color = {
+                "BAJA": "#2e7d32",
+                "MEDIA": "#f9a825",
+                "ALTA": "#ef6c00",
+                "URGENTE": "#c62828",
+            }.get(etiqueta, "#546e7a")
 
-        if obj.calendario_registro != "2026B":
-            dias = 0
-        else:
-            dias = 25
+            return format_html(
+                '<span style="display:inline-block; padding:4px 8px; border-radius:999px; '
+                'font-weight:600; color:white; background:{}; min-width:90px; text-align:center;">'
+                '{} {}'
+                '</span>',
+                color,
+                int(round(prioridad)),
+                etiqueta,
+            )
+        except Exception as e:
+            # En caso de cualquier incidencia imprevista, muestra el error de forma controlada
+            return format_html('<span style="color: red;">Error calc</span>')
 
-        prioridad, etiqueta = calcular_prioridad_proyecto(
-            dias, documentos, revisiones
-        )
-        color = {
-            "BAJA": "#2e7d32",
-            "MEDIA": "#f9a825",
-            "ALTA": "#ef6c00",
-            "URGENTE": "#c62828",
-        }.get(etiqueta, "#546e7a")
-
-        return format_html(
-            '<span style="display:inline-block; padding:4px 8px; border-radius:999px; '
-            'font-weight:600; color:white; background:{}; min-width:90px; text-align:center;">'
-            "{} - {}"
-            "</span>",
-            color,
-            int(round(prioridad)),
-            etiqueta,
-        )
     
     def boton_enviar_correo(self, obj):
         return format_html(
@@ -173,14 +210,9 @@ class ProyectoAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
-            # Botones de fila
             path('enviar-correo/<str:folio>/', self.admin_site.admin_view(self.enviar_correo), name='enviar_correo'),
             path('enviar-correo-evaluador/<str:folio>/', self.admin_site.admin_view(self.enviar_correo_evaluador), name='enviar_correo_evaluador'),
-            
-            # 🟠 URL BOTÓN 1: Importar Google Forms (Registro Inicial)
             path('importar-forms/', self.admin_site.admin_view(self.importar_forms), name='importar_forms_admin'),
-            
-            # 🟠 URL BOTÓN 2: Importar Correcciones (Formato 1)
             path(
                 "importar-correcciones/",
                 self.admin_site.admin_view(self.importar_correcciones_view),
@@ -193,7 +225,6 @@ class ProyectoAdmin(admin.ModelAdmin):
     # 🟠 LÓGICA DE LOS BOTONES NARANJAS
     # ---------------------------------------------------------------
 
-    # VISTA 1: Importar Correcciones (Script Python nuevo)
     def importar_correcciones_view(self, request):
         try:
             total_actualizados, lista_errores = importar_correcciones_formato1()
@@ -218,7 +249,6 @@ class ProyectoAdmin(admin.ModelAdmin):
 
         return redirect("..")
 
-    # VISTA 2: Importar Forms Iniciales (Comando de gestión)
     def importar_forms(self, request):
         from django.core.management import call_command
         try:
@@ -229,7 +259,7 @@ class ProyectoAdmin(admin.ModelAdmin):
         return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
 
-    # --- Resto de funciones de correo (Sin cambios) ---
+    # --- Resto de funciones de correo ---
 
     def enviar_correo(self, request, folio):
         proyecto = Proyecto.objects.get(pk=folio)
