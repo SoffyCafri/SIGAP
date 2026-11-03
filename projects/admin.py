@@ -2,6 +2,7 @@ from datetime import datetime
 from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
+import threading
 from django.core.mail import send_mail
 from django.urls import path
 from django.shortcuts import redirect
@@ -258,8 +259,24 @@ class ProyectoAdmin(admin.ModelAdmin):
             messages.error(request, f"❌ Error durante la importación: {e}")
         return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
+    # ---------------------------------------------------------------
+    # 🟠 FUNCIÓN AUXILIAR PARA CORREOS EN SEGUNDO PLANO (Asíncrono)
+    # ---------------------------------------------------------------
+    @staticmethod
+    def _enviar_correo_background(asunto, mensaje, destinatarios, from_email):
+        try:
+            send_mail(
+                subject=asunto,
+                message=mensaje,
+                from_email=from_email,
+                recipient_list=destinatarios,
+                fail_silently=False,
+            )
+            print("✔ Correo enviado exitosamente en segundo plano.")
+        except Exception as e:
+            print(f"❌ Error al enviar correo en segundo plano: {e}")
 
-    # --- Resto de funciones de correo ---
+    # --- Resto de funciones de correo actualizadas ---
 
     def enviar_correo(self, request, folio):
         proyecto = Proyecto.objects.get(pk=folio)
@@ -289,8 +306,13 @@ class ProyectoAdmin(admin.ModelAdmin):
             f"Atentamente,\nComité de Evaluación"
         )
 
-        send_mail(asunto, mensaje, None, destinatarios, fail_silently=False)
-        messages.success(request, f"✅ Correo enviado correctamente a los participantes.")
+        # Lanzar el envío en segundo plano para evitar timeout en Gunicorn
+        threading.Thread(
+            target=self._enviar_correo_background,
+            args=(asunto, mensaje, destinatarios, settings.DEFAULT_FROM_EMAIL)
+        ).start()
+
+        messages.success(request, f"✅ El correo se está enviando a los participantes en segundo plano.")
         return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
     def enviar_correo_evaluador(self, request, folio):
@@ -305,7 +327,7 @@ class ProyectoAdmin(admin.ModelAdmin):
             return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
         formato = proyecto.formato1_data 
-        destinatario = proyecto.evaluador.correo_evaluador
+        destinatario = [proyecto.evaluador.correo_evaluador]
         asunto = f"[Evaluación] Asignación de Proyecto {proyecto.folio}"
 
         mensaje = (
@@ -329,19 +351,15 @@ class ProyectoAdmin(admin.ModelAdmin):
             f"Comité de Evaluación"
         )
 
-        try:
-            send_mail(
-                subject=asunto,
-                message=mensaje,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[destinatario],
-                fail_silently=False,
-            )
-            messages.success(request, f"✅ Correo enviado exitosamente al evaluador del proyecto {proyecto.folio}.")
-        except Exception as e:
-            messages.error(request, f"❌ Error al enviar el correo: {e}")
+        # Lanzar el envío en segundo plano para evitar timeout en Gunicorn
+        threading.Thread(
+            target=self._enviar_correo_background,
+            args=(asunto, mensaje, destinatario, settings.DEFAULT_FROM_EMAIL)
+        ).start()
 
+        messages.success(request, f"✅ El correo al evaluador del proyecto {proyecto.folio} se está enviando en segundo plano.")
         return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
+    
 
 
 @admin.register(Participacion)
