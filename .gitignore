@@ -17,3 +17,5 @@ postgres_data/
 credentials/google-sheets.json
 google_service_account.json.json 
 SIGAP/credentials/google_service_account.json
+credentials-gmail.json
+generar_token.py

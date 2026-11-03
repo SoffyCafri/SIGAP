@@ -19,6 +19,8 @@ from .fuzzy_priority import calcular_prioridad_proyecto
 # 🟠 IMPORTANTE: Importa tu nuevo script de correcciones
 from .import_correcciones_formato1 import importar_correcciones_formato1 
 
+from email_service import enviar_correo_gmail
+
 # --------------------------------------------------------------------
 # 1. TU FORMULARIO PERSONALIZADO
 # --------------------------------------------------------------------
@@ -260,29 +262,6 @@ class ProyectoAdmin(admin.ModelAdmin):
             messages.error(request, f"❌ Error durante la importación: {e}")
         return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
-    # ---------------------------------------------------------------
-    # 🟠 FUNCIÓN AUXILIAR CON RESEND (HTTP en segundo plano)
-    # ---------------------------------------------------------------
-    @staticmethod
-    def _enviar_correo_background(asunto, mensaje, destinatarios, from_email):
-        try:
-            resend.api_key = os.getenv("RESEND_API_KEY")
-            
-            # Nota: Resend en modo gratuito utiliza 'onboarding@resend.dev' como remitente por defecto
-            remitente = "onboarding@resend.dev"
-            
-            params = {
-                "from": remitente,
-                "to": destinatarios,
-                "subject": asunto,
-                "html": f"<p>{mensaje.replace(chr(10), '<br>')}</p>",
-            }
-            
-            response = resend.Emails.send(params)
-            print("✔ Correo enviado exitosamente vía Resend:", response)
-        except Exception as e:
-            print(f"❌ Error al enviar correo con Resend: {e}")
-
     # --- Resto de funciones de correo actualizadas ---
 
     def enviar_correo(self, request, folio):
@@ -290,23 +269,36 @@ class ProyectoAdmin(admin.ModelAdmin):
         destinatarios = []
 
         if proyecto.asesor and proyecto.asesor.correo_electronico:
-            destinatarios.append(proyecto.asesor.correo_electronico.strip().lower())
+            destinatarios.append(
+                proyecto.asesor.correo_electronico.strip().lower()
+            )
+
         if proyecto.evaluador and proyecto.evaluador.correo_evaluador:
-            destinatarios.append(proyecto.evaluador.correo_evaluador.strip().lower())
-        
+            destinatarios.append(
+                proyecto.evaluador.correo_evaluador.strip().lower()
+            )
+
         for participacion in proyecto.participacion_set.all():
             alumno = participacion.alumno
             if alumno and alumno.correo_electronico:
-                destinatarios.append(alumno.correo_electronico.strip().lower())
+                destinatarios.append(
+                    alumno.correo_electronico.strip().lower()
+                )
 
         # Eliminar duplicados y limpiar nulos/vacíos
         destinatarios = list(set([d for d in destinatarios if d]))
 
         if not destinatarios:
-            messages.error(request, "❌ No hay correos registrados para este proyecto.")
-            return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
+            messages.error(
+                request,
+                "❌ No hay correos registrados para este proyecto."
+            )
+            return redirect(
+                request.META.get('HTTP_REFERER', 'admin:index')
+            )
 
         asunto = f"Notificación del Proyecto {proyecto.folio}"
+
         mensaje = (
             f"Estimados participantes,\n\n"
             f"Este es un aviso relacionado con el proyecto '{proyecto.titulo}' "
@@ -314,31 +306,53 @@ class ProyectoAdmin(admin.ModelAdmin):
             f"Atentamente,\nComité de Evaluación"
         )
 
-        # Lanzar el envío en segundo plano vía Resend
-        threading.Thread(
-            target=self._enviar_correo_background,
-            args=(asunto, mensaje, destinatarios, settings.DEFAULT_FROM_EMAIL)
-        ).start()
+        # Enviar correo mediante Gmail API
+        try:
+            enviar_correo_gmail(asunto, mensaje, destinatarios)
 
-        messages.success(request, f"✅ El correo se está enviando a los participantes en segundo plano.")
-        return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
+            messages.success(
+                request,
+                "✅ Correo enviado correctamente a los participantes."
+            )
+
+        except Exception as e:
+            messages.error(
+                request,
+                f"❌ Error al enviar el correo: {str(e)}"
+            )
+
+        return redirect(
+            request.META.get('HTTP_REFERER', 'admin:index')
+        )
 
     def enviar_correo_evaluador(self, request, folio):
         proyecto = Proyecto.objects.get(pk=folio)
 
         if not proyecto.evaluador or not proyecto.evaluador.correo_evaluador:
-            messages.error(request, "❌ Este proyecto no tiene un evaluador con correo asignado.")
-            return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
+            messages.error(
+                request,
+                "❌ Este proyecto no tiene un evaluador con correo asignado."
+            )
+            return redirect(
+                request.META.get('HTTP_REFERER', 'admin:index')
+            )
 
         if not hasattr(proyecto, 'formato1_data'):
-            messages.error(request, "❌ Error: El proyecto no tiene la documentación (Formato 1) registrada. Llene los datos primero.")
-            return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
+            messages.error(
+                request,
+                "❌ Error: El proyecto no tiene la documentación (Formato 1) registrada. Llene los datos primero."
+            )
+            return redirect(
+                request.META.get('HTTP_REFERER', 'admin:index')
+            )
 
-        formato = proyecto.formato1_data 
-        
+        formato = proyecto.formato1_data
+
         # Forzar minúsculas en el correo del evaluador
-        destinatario = [proyecto.evaluador.correo_evaluador.strip().lower()]
-        
+        destinatario = [
+            proyecto.evaluador.correo_evaluador.strip().lower()
+        ]
+
         asunto = f"[Evaluación] Asignación de Proyecto {proyecto.folio}"
 
         mensaje = (
@@ -362,15 +376,25 @@ class ProyectoAdmin(admin.ModelAdmin):
             f"Comité de Evaluación"
         )
 
-        # Lanzar el envío en segundo plano vía Resend
-        threading.Thread(
-            target=self._enviar_correo_background,
-            args=(asunto, mensaje, destinatario, settings.DEFAULT_FROM_EMAIL)
-        ).start()
+        # Enviar correo mediante Gmail API
+        try:
+            enviar_correo_gmail(asunto, mensaje, destinatario)
 
-        messages.success(request, f"✅ El correo al evaluador del proyecto {proyecto.folio} se está enviando en segundo plano.")
-        return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
-    
+            messages.success(
+                request,
+                f"✅ Correo enviado correctamente al evaluador del proyecto {proyecto.folio}."
+            )
+
+        except Exception as e:
+            messages.error(
+                request,
+                f"❌ Error al enviar el correo: {str(e)}"
+            )
+
+        return redirect(
+            request.META.get('HTTP_REFERER', 'admin:index')
+        )
+        
 
 
 @admin.register(Participacion)
