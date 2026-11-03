@@ -290,16 +290,17 @@ class ProyectoAdmin(admin.ModelAdmin):
         destinatarios = []
 
         if proyecto.asesor and proyecto.asesor.correo_electronico:
-            destinatarios.append(proyecto.asesor.correo_electronico)
+            destinatarios.append(proyecto.asesor.correo_electronico.strip().lower())
         if proyecto.evaluador and proyecto.evaluador.correo_evaluador:
-            destinatarios.append(proyecto.evaluador.correo_evaluador)
+            destinatarios.append(proyecto.evaluador.correo_evaluador.strip().lower())
         
         for participacion in proyecto.participacion_set.all():
             alumno = participacion.alumno
             if alumno and alumno.correo_electronico:
-                destinatarios.append(alumno.correo_electronico)
+                destinatarios.append(alumno.correo_electronico.strip().lower())
 
-        destinatarios = list(set(destinatarios))
+        # Eliminar duplicados y limpiar nulos/vacíos
+        destinatarios = list(set([d for d in destinatarios if d]))
 
         if not destinatarios:
             messages.error(request, "❌ No hay correos registrados para este proyecto.")
@@ -334,7 +335,10 @@ class ProyectoAdmin(admin.ModelAdmin):
             return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
         formato = proyecto.formato1_data 
-        destinatario = [proyecto.evaluador.correo_evaluador]
+        
+        # Forzar minúsculas en el correo del evaluador
+        destinatario = [proyecto.evaluador.correo_evaluador.strip().lower()]
+        
         asunto = f"[Evaluación] Asignación de Proyecto {proyecto.folio}"
 
         mensaje = (
