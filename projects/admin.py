@@ -3,7 +3,8 @@ from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
 import threading
-from django.core.mail import send_mail
+import os
+import resend
 from django.urls import path
 from django.shortcuts import redirect
 from django.utils.html import format_html
@@ -260,21 +261,27 @@ class ProyectoAdmin(admin.ModelAdmin):
         return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
 
     # ---------------------------------------------------------------
-    # 🟠 FUNCIÓN AUXILIAR PARA CORREOS EN SEGUNDO PLANO (Asíncrono)
+    # 🟠 FUNCIÓN AUXILIAR CON RESEND (HTTP en segundo plano)
     # ---------------------------------------------------------------
     @staticmethod
     def _enviar_correo_background(asunto, mensaje, destinatarios, from_email):
         try:
-            send_mail(
-                subject=asunto,
-                message=mensaje,
-                from_email=from_email,
-                recipient_list=destinatarios,
-                fail_silently=False,
-            )
-            print("✔ Correo enviado exitosamente en segundo plano.")
+            resend.api_key = os.getenv("RESEND_API_KEY")
+            
+            # Nota: Resend en modo gratuito utiliza 'onboarding@resend.dev' como remitente por defecto
+            remitente = "onboarding@resend.dev"
+            
+            params = {
+                "from": remitente,
+                "to": destinatarios,
+                "subject": asunto,
+                "html": f"<p>{mensaje.replace(chr(10), '<br>')}</p>",
+            }
+            
+            response = resend.Emails.send(params)
+            print("✔ Correo enviado exitosamente vía Resend:", response)
         except Exception as e:
-            print(f"❌ Error al enviar correo en segundo plano: {e}")
+            print(f"❌ Error al enviar correo con Resend: {e}")
 
     # --- Resto de funciones de correo actualizadas ---
 
@@ -306,7 +313,7 @@ class ProyectoAdmin(admin.ModelAdmin):
             f"Atentamente,\nComité de Evaluación"
         )
 
-        # Lanzar el envío en segundo plano para evitar timeout en Gunicorn
+        # Lanzar el envío en segundo plano vía Resend
         threading.Thread(
             target=self._enviar_correo_background,
             args=(asunto, mensaje, destinatarios, settings.DEFAULT_FROM_EMAIL)
@@ -351,7 +358,7 @@ class ProyectoAdmin(admin.ModelAdmin):
             f"Comité de Evaluación"
         )
 
-        # Lanzar el envío en segundo plano para evitar timeout en Gunicorn
+        # Lanzar el envío en segundo plano vía Resend
         threading.Thread(
             target=self._enviar_correo_background,
             args=(asunto, mensaje, destinatario, settings.DEFAULT_FROM_EMAIL)
